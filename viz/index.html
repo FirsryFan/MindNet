@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MindNet · 认知模型可视化壳</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <h1>MindNet <span>认知模型引擎 v1.1</span></h1>
+  <span class="sub">独立组件 + 可视化壳（不依赖 AI、不依赖网络）</span>
+  <span class="spacer"></span>
+  <span class="badge">轮次 <b id="badge-round">0</b></span>
+  <span class="badge">状态 <b id="badge-stop">未开始</b></span>
+</header>
+
+<main>
+  <section id="stage">
+    <div class="toolbar">
+      <button id="btn-start" class="primary">开始扩散</button>
+      <button id="btn-step">单步</button>
+      <button id="btn-run">跑到底</button>
+      <button id="btn-play">自动播放</button>
+      <button id="btn-reset">重置</button>
+      <button id="btn-append">追加起点</button>
+      <label style="color:var(--muted);font-size:12px">速度</label>
+      <select id="speed">
+        <option value="1200">慢</option>
+        <option value="600" selected>中</option>
+        <option value="250">快</option>
+      </select>
+    </div>
+    <svg id="graph-svg" viewBox="0 0 1000 660" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b7fa6"></path>
+        </marker>
+      </defs>
+      <g id="layer-edges"></g>
+      <g id="layer-nodes"></g>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#ff7a45"></i>CONSCIOUS 显意识</span>
+      <span><i style="background:#ffc53d"></i>SUBCONSCIOUS 潜意识</span>
+      <span><i style="background:#4a5b6d"></i>INACTIVE 未激活</span>
+      <span>粗实圈＝起点　虚线圈＝目标</span>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>当前扩散</h2>
+      <div class="row">
+        <span class="big gap" id="kc-gap">0</span><label>Gap 发展区缺口</label>
+        <span class="big penalty" id="kc-penalty">0</span><label>Penalty 死角区惩罚</label>
+      </div>
+      <dl class="kv">
+        <dt>目标</dt><dd id="info-targets">（无）</dd>
+        <dt>目标步数</dt><dd id="info-steps">（无）</dd>
+        <dt>目标全达成</dt><dd id="info-reached">否</dd>
+        <dt>显意识 / 潜意识 / 未激活</dt><dd id="info-counts">0 / 0 / 0</dd>
+      </dl>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>选中节点 <small>点图上节点或下表选中</small></h2>
+      <dl class="kv" id="node-detail"><dt>—</dt><dd>未选中</dd></dl>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-role-start">设为起点</button>
+        <button id="btn-role-target">设为目标</button>
+        <button id="btn-role-clear">清除角色</button>
+      </div>
+      <div class="msg">角色在「开始扩散 / 重置」时生效；扩散中新增的起点请用「追加起点」。</div>
+    </div>
+
+    <div class="card">
+      <h2>现实时间与记忆 <small>§4 遗忘曲线</small></h2>
+      <div class="row">
+        <label>当前现实时间（小时）</label>
+        <input type="number" id="now-input" step="0.5">
+        <button id="btn-now-reset">取现在</button>
+      </div>
+      <div class="row">
+        <button id="btn-focus-review">专注复习选中节点</button>
+        <label>上次复习</label>
+        <input type="number" id="hours-ago" value="10" step="1">
+        <label>小时前</label>
+        <button id="btn-set-ago">设为该时间</button>
+      </div>
+      <div class="row">
+        <button id="btn-memory-update">更新全局记忆</button>
+        <span class="msg" id="memory-msg"></span>
+      </div>
+      <canvas id="curve-canvas" width="720" height="240"></canvas>
+      <div class="msg" id="curve-caption"></div>
+    </div>
+
+    <div class="card">
+      <h2>诊断清单</h2>
+      <details open>
+        <summary>发展区（已激活但有缺口）</summary>
+        <table><thead><tr><th>节点</th><th>状态</th><th>Impact</th><th>1.2×CT</th><th>贡献</th></tr></thead><tbody id="gap-body"></tbody></table>
+      </details>
+      <details open style="margin-top:8px">
+        <summary>死角区（未激活且尝试失败过）</summary>
+        <table><thead><tr><th>节点</th><th>weight</th><th>visit</th><th>贡献</th></tr></thead><tbody id="dead-body"></tbody></table>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>输入 JSON</h2>
+      <div class="row">
+        <select id="sample-select"></select>
+        <button id="btn-load-sample">载入示例</button>
+        <button id="btn-load-json" class="primary">载入文本框</button>
+      </div>
+      <textarea id="json-input" spellcheck="false"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>输出</h2>
+      <div class="row">
+        <button id="btn-export">导出当前状态</button>
+        <a id="download-link" style="display:none"><button>下载 state.json</button></a>
+      </div>
+      <textarea id="json-output" spellcheck="false" readonly></textarea>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>节点总表</summary>
+        <table>
+          <thead><tr><th>id</th><th>名称</th><th>状态</th><th>al</th><th>ms</th><th>w</th><th>visit</th></tr></thead>
+          <tbody id="node-table"></tbody>
+        </table>
+      </details>
+    </div>
+  </aside>
+</main>
+
+<!-- 引擎：按依赖顺序加载，file:// 下也能工作（普通 script，不用 ES module） -->
+<script src="../src/config.js"></script>
+<script src="../src/model.js"></script>
+<script src="../src/memory.js"></script>
+<script src="../src/diffusion.js"></script>
+<script src="sample_graph.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

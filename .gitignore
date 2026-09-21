@@ -1,0 +1,16 @@
+# 依赖（本项目零依赖，这里只是防手滑）
+node_modules/
+
+# 运行时/测试临时目录（内核约定：临时文件一律放组件内，不写系统 TEMP）
+.tmp/
+.tmp_verify/
+.probe/
+
+# 输出产物
+state.json
+*.log
+
+# 系统杂项
+.DS_Store
+Thumbs.db
+desktop.ini

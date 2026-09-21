@@ -1,0 +1,36 @@
+{
+  "graph": {
+    "nodes": [
+      {
+        "id": "node_1",
+        "name": "三角函数",
+        "type": "knowledge",
+        "weight": 0.9,
+        "ms": 0.8,
+        "ct": 0.3,
+        "st": 0.05,
+        "last_review_time": 0
+      },
+      {
+        "id": "node_2",
+        "name": "正弦定理",
+        "type": "knowledge",
+        "weight": 0.7,
+        "ms": 0.6,
+        "ct": 0.3,
+        "st": 0.05,
+        "last_review_time": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1",
+        "from": "node_1",
+        "to": "node_2",
+        "ls": 0.8
+      }
+    ]
+  },
+  "initial_nodes": ["node_1"],
+  "target_nodes": ["node_2"]
+}
