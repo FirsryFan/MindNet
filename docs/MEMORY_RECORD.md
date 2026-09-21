@@ -48,7 +48,18 @@
 
 ---
 
-## 3. 余额恢复后的补记步骤（两步）
+## 3. 代码仓库与实施进度（2026-09-21）
+
+- **GitHub 仓库**：https://github.com/FirsryFan/MindNet （公开）
+- **首个实现提交**：`a57405d`「MindNet v2 alpha：机制内核 + 插件架构 + v1.2 记忆层」，接在远端的 `f5c30ff Initial commit` 之上（未覆盖历史）
+- 仓库内容：40 个文件（含 `.gitattributes` 统一 LF、`.gitignore`），零第三方依赖
+- 已实现：`src/core/`（可播种 RNG、机制内核：14 槽位调度/不变量守卫/命名空间状态/验收执行）、`mechanisms/memory.dsr.js`（v1.2 记忆层）、`tools/mechanisms.js`（校验与目录报告）、`probe/`（三支只读探针）、`test/`（59 项）
+- 已验证：`npm test` 59/59；`npm run mechanisms -- --check` PASS（验收 6/6、静态扫描 0 违规）；`npm run math` 7 组全过；`npm run probe:v2` 显示学习规律 1、5 已翻转
+- 未实现（方程已定）：v1.3 快层（容量竞争、入边求和、分流方程、概率点火、节律门控）、v2.0 控制层（元认知、诊断→指令、反事实规划）、可视化壳接 v2
+
+---
+
+## 4. 余额恢复后的补记步骤（两步）
 
 1. `hindsight_capture_initiative(title="MindNet 认知模型引擎（独立组件 + 可视化壳）", summary=<把本文 §1 的事实与方向变更写进去>, relates_to_page_id="kp-4da6589568e7468fb128e5c5d0565b84")`
 2. 若要保留更细的设计决策，再 `hindsight_ingest_document(title="MindNet 设计决策记录 v1.1→v2", content=<本文 §1 + 三份设计文档的要点>)`
