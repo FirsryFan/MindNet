@@ -41,4 +41,23 @@ function pickMechanisms(list, ids) {
   });
 }
 
-module.exports = { loadMechanisms, pickMechanisms };
+/** 预置配置：新旧模型不是两套代码，而是两份模块清单 */
+const PROFILES = Object.freeze({
+  // v2 快层 + 记忆层（默认）
+  v2: [
+    'memory.dsr',
+    'context.goal',
+    'rhythm.gate',
+    'dynamics.shunting',
+    'attention.capacity',
+    'attention.ignition',
+  ],
+  // 只要记忆层（旧扩散 + 新记忆）
+  memory: ['memory.dsr'],
+  // v1.1 兼容基线（与 v2 快层模块互斥）
+  legacy: ['memory.dsr', 'legacy_v1'],
+  // 实验性机制：默认不进 v2 配置，参数未标定
+  extras: ['attention.capacity', 'attention.inhibition'],
+});
+
+module.exports = { loadMechanisms, pickMechanisms, PROFILES };

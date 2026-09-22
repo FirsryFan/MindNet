@@ -28,13 +28,15 @@ const memoryDsr = require('../mechanisms/memory.dsr.js');
  *   seed      随机种子（确定性）
  *   hours     起始现实时间（小时）
  *   overrides 参数覆盖，形如 { 'memory.dsr.kappa': 4 }
- *   mechanisms 只启用指定 id（缺省＝全部已加载机制）
+ *   mechanisms 只启用指定 id（缺省＝用 profile）
+ *   profile   预置配置：'v2'（默认）/ 'memory' / 'legacy'
  */
 function createKernel(graph, configInstance, options) {
   const opts = options || {};
   const kernel = new core.MechanismKernel(graph, configInstance, opts);
   const loaded = registry.loadMechanisms();
-  kernel.load(registry.pickMechanisms(loaded, opts.mechanisms));
+  const ids = opts.mechanisms || registry.PROFILES[opts.profile || 'v2'];
+  kernel.load(registry.pickMechanisms(loaded, ids));
   return kernel;
 }
 

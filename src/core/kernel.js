@@ -21,8 +21,9 @@
   const HOOK_NAMES = Object.freeze([
     'tick.before',      // 每 tick：节律状态推进
     'tick.gate',        // 每 tick：本 tick 是否允许点火（可拦断）
-    'round.before',     // 每轮：目标/上下文刷新、疲劳、带宽重置
+    'round.before',     // 每轮：目标/上下文刷新、疲劳、带宽重置、节拍长度
     'drive.compute',    // 算入边驱动
+    'activation.update',// 激活更新（分流方程等）
     'attention.select', // 容量竞争与准入
     'ignite.check',     // 点火判定
     'state.after',      // 状态落定后
@@ -34,6 +35,17 @@
     'output.score',     // 输出排序与指令
     'serialize.on',     // 存档扩展
   ]);
+
+  /**
+   * 跨模块共享的快状态（放在 node.m.core 下，所有模块都能读）。
+   * 模块要写共享字段，必须在 manifest 的 shared 里声明；
+   * 模块私有的中间量请走 patch()（写进自己的命名空间）。
+   */
+  const SHARED_BOUNDS = Object.freeze({
+    a: [0, 1],   // 激活水平
+    q: [0, 1],   // 亚阈累积
+  });
+  const SHARED_NS = 'core';
 
   const LAYERS = Object.freeze([
     'rhythm', 'attention', 'memory', 'structure',
@@ -86,9 +98,14 @@
       if (p.calibrated === undefined) fail(`机制 "${m.id}" 参数 "${p.key}" 必须显式标注 calibrated（true/false）`);
     }
 
-    for (const listName of ['reads', 'writes', 'requires', 'conflicts']) {
+    for (const listName of ['reads', 'writes', 'requires', 'conflicts', 'shared']) {
       const list = m[listName] === undefined ? [] : m[listName];
       if (!Array.isArray(list)) fail(`机制 "${m.id}" 的 ${listName} 必须是数组`);
+    }
+    for (const s of m.shared || []) {
+      if (!Object.prototype.hasOwnProperty.call(SHARED_BOUNDS, s)) {
+        fail(`机制 "${m.id}" 声明了未知共享字段 "${s}"（可用：${Object.keys(SHARED_BOUNDS).join(', ')}）`);
+      }
     }
     for (const w of m.writes || []) {
       if (typeof w !== 'string' || !FIELD_RE.test(w)) {
@@ -213,9 +230,13 @@
         }
       }
       this._bounds = { ms: [0, 1], al: [0, 1] };
+      for (const f of Object.keys(SHARED_BOUNDS)) this._bounds[`${SHARED_NS}.${f}`] = SHARED_BOUNDS[f];
       for (const m of order) {
         for (const field of Object.keys(m.bounds || {})) {
           this._bounds[field] = m.bounds[field];
+        }
+        for (const f of m.shared || []) {
+          this._owner[`${SHARED_NS}.${f}`] = m.id;
         }
       }
       this._finalized = true;
@@ -272,6 +293,15 @@
       if (!manifest) return this.m;
       if (!this.m[manifest.__ns]) this.m[manifest.__ns] = {};
       return this.m[manifest.__ns];
+    }
+
+    /** 共享快状态（node.m.core）：所有模块都能读 */
+    shared(nodeId) {
+      const node = this.graph.get_node(nodeId);
+      if (!node) fail(`节点 "${nodeId}" 不存在`);
+      if (!node.m) node.m = {};
+      if (!node.m[SHARED_NS]) node.m[SHARED_NS] = { a: 0, q: 0 };
+      return node.m[SHARED_NS];
     }
 
     // ------------------------------------------------------------ 事件入口
@@ -364,9 +394,22 @@
         nodes: () => Array.from(kernel.graph.nodes.values()),
         edges: () => kernel.graph.edges,
         data: (id) => kernel.data(id, manifest),
+        shared: (id) => kernel.shared(id),
         store: () => kernel.store(manifest),
         param: (key) => kernel.param(`${manifest.id}.${key}`),
         log: (message) => kernel.warnings.push({ mechanism: manifest.id, kind: 'log', message: String(message) }),
+        /** 写共享快状态（必须在 manifest 的 shared 里声明） */
+        patchShared: (nodeId, fields) => {
+          const declared = new Set(manifest.shared || []);
+          const bag = kernel.shared(nodeId);
+          for (const key of Object.keys(fields || {})) {
+            if (!declared.has(key)) {
+              fail(`机制 ${manifest.id} 未在 shared 中声明字段 "${key}"，内核拒绝写入共享状态`);
+            }
+            bag[key] = fields[key];
+            kernel._owner[`${SHARED_NS}.${key}`] = manifest.id;
+          }
+        },
         /** 写状态：纯字段名 → 本模块命名空间；白名单内核字段 → 直接写节点 */
         patch: (nodeId, fields) => {
           const node = kernel.graph.get_node(nodeId);
@@ -525,6 +568,8 @@
     LAYERS,
     LEVELS,
     CORE_WRITABLE,
+    SHARED_BOUNDS,
+    SHARED_NS,
     stateHashOf: (kernel) => kernel.stateHash(),
   };
 

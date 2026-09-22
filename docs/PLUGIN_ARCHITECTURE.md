@@ -37,31 +37,43 @@ v1.1 只有"轮次"。你要的"一秒钟半秒在思考、半秒不在"需要�
 |---|---|---|---|---|
 | 1 | `tick.before` | 每 tick 开始 | 相位推进、走神马尔可夫状态、警觉值 | 否 |
 | 2 | `tick.gate` | 每 tick 点火前 | 本 tick 是否允许点火（走神中 → 否） | **是** |
-| 3 | `round.before` | 每轮开始 | 目标/上下文刷新、疲劳累积、带宽重置 | 否 |
+| 3 | `round.before` | 每轮开始 | 目标/上下文刷新、疲劳累积、带宽重置、节拍长度 | 否 |
 | 4 | `drive.compute` | 算入边驱动时 | 求和/取最大、情境调制、抑制、fan 修正 | 否（可改值） |
-| 5 | `attention.select` | 驱动算完后 | 带宽竞争、显著性排序、硬聚焦 | 否（可改排序） |
-| 6 | `ignite.check` | 点火判定 | 阈值/概率点火/温度 | 否 |
-| 7 | `state.after` | 状态落定后 | 元认知采样、情感标记、失败分类 | 否 |
-| 8 | `round.after` | 每轮结束 | 冷却判定、日志、跨轮统计 | 否 |
-| 9 | `review.on` | 复习事件 | 三档复习、S/D 更新、错误回写 | 否 |
-| 10 | `consolidate.on` | 环节末/跨天 | 重放巩固、突触下调、间隔排程 | 否 |
-| 11 | `diagnose.on` | 诊断阶段 | 卡点分类、危险区、内化深度 | 否 |
-| 12 | `output.score` | 输出阶段 | 排序、指令建议、反事实预测 | 否 |
-| 13 | `serialize.on` | 存档 | 模块自己的状态字段读写 | 否 |
+| 5 | `activation.update` | 驱动算完后 | 分流方程、激活衰减（写 `payload.next`） | 否 |
+| 6 | `attention.select` | 激活更新后 | 带宽竞争、显著性排序、硬聚焦（写 `payload.admitted`） | 否（可改排序） |
+| 7 | `ignite.check` | 点火判定 | 阈值/概率点火/温度（写 `payload.conscious`） | 否 |
+| 8 | `state.after` | 状态落定后 | 亚阈累积、元认知采样、失败分类 | 否 |
+| 9 | `round.after` | 每轮结束 | 冷却判定、日志、跨轮统计 | 否 |
+| 10 | `review.on` | 复习事件 | 三档复习、S/D 更新、错误回写 | 否 |
+| 11 | `consolidate.on` | 环节末/跨天 | 重放巩固、突触下调、间隔排程 | 否 |
+| 12 | `hours.advance` | 现实时间推进 | 记忆衰减同步（把 `R(t)` 写回 `node.ms`） | 否 |
+| 13 | `diagnose.on` | 诊断阶段 | 卡点分类、危险区、内化深度 | 否 |
+| 14 | `output.score` | 输出阶段 | 排序、指令建议、反事实预测 | 否 |
+| 15 | `serialize.on` | 存档 | 模块自己的状态字段读写 | 否 |
 
-槽位函数签名统一：
+> **实现注记**：`activation.update` 与 `hours.advance` 是落地时补上的两个槽位（原设计 13 个）。
+> 前者必须有，否则"激活怎么变"只能写死在引擎里；后者把"现实时间推进"从 `round.before` 里分离出来。
+
+**跨模块共享状态**：激活 `a` 与亚阈 `q` 放在 `node.m.core`，所有模块可读。
+要写共享字段必须在 manifest 的 `shared` 里声明；模块私有的中间量走 `ctx.patch()` 写进自己的命名空间。
 
 ```js
 function hook(ctx) {
-  // ctx: 只读访问器 + 受校验的写入口
-  const drive = ctx.get('drive');                     // 读
-  ctx.patch(nodeId, { 'm.attention.load': 0.7 });     // 写（只能写自己声明过的字段）
-  return { block: false };                            // tick.gate 可返回 { block: true, reason: 'mind_wandering' }
+  const a = ctx.shared(nodeId).a;              // 读共享快状态
+  ctx.patchShared(nodeId, { q: 0.2 });         // 写共享状态（需在 shared 里声明）
+  ctx.patch(nodeId, { myMetric: 1 });          // 写自己的命名空间（需在 writes 里声明）
+  return { block: false };                     // tick.gate 可返回 { block: true, reason: 'mind_wandering' }
 }
 ```
 
-`ctx` 提供：`nodes / edges / round / tick / hours / goal / rng(seed) / config / log()`。
-**`ctx.now` 而不是 `Date.now()`**——内核要保证确定性（同一 seed 逐位可复现）。
+**配置档（profile）**：新旧模型不是两套代码，而是两份模块清单 ——
+`v2`（记忆层 + 目标偏置 + 节律门控 + 分流方程 + 两级容量 + 概率点火）、
+`memory`（只换记忆层）、`legacy`（记忆层 + `legacy_v1`，逐轮复现 v1.1）、
+`extras`（未标定的实验机制，如侧抑制）。`legacy_v1` 与 v2 快层模块在 manifest 里声明了冲突，同时装载会被内核拒绝。
+
+`ctx` 提供：`node / nodes / edges / data / shared / patch / patchShared / store / param / rng / log`，
+以及 `payload`（本槽位的管线数据：`drive / scores / next / admitted / focus / conscious / subconscious / availability`）。
+**时间一律用 `ctx.tick / ctx.round / ctx.hours`，禁止 `Date.now()`**——内核要保证确定性（同一 seed 逐位可复现）。
 
 ---
 

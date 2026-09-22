@@ -69,21 +69,29 @@ mindnet/
 │  ├─ DESIGN_v2_PROPOSAL.md v2 提案：脑/学生模仿、九处机制缺口、三层架构、验收标准
 │  ├─ PLUGIN_ARCHITECTURE.md 机制插件化：槽位、模块 manifest、不变量守卫、AI 插入流程
 │  └─ MECHANISM_CATALOG.md  机制目录：8 层 50+ 条候选机制（带文献依据 / 数学形式 / 优先级）
-├─ src/                     内核与 v1.1 引擎（无第三方依赖）
+├─ src/                     内核、v1.1 引擎与 v2 快层引擎（无第三方依赖）
 │  ├─ core/rng.js           可播种 PRNG（确定性不变量 I1）
-│  ├─ core/kernel.js        机制内核：槽位调度、不变量守卫、命名空间状态、验收执行
+│  ├─ core/kernel.js        机制内核：15 个槽位调度、不变量守卫、共享/命名空间状态、验收执行
+│  ├─ v2/engine.js          **v1.3 快层引擎**：每轮管线（节律→驱动→激活→容量→点火→落状态）
 │  ├─ config.js             §9 全局参数 + 错误类型 + now_hours()
 │  ├─ model.js              §3 Node / Edge / Graph（加载与校验）
 │  ├─ memory.js             v1.1 的遗忘曲线 / 全局记忆更新 / 专注复习
 │  ├─ diffusion.js          v1.1 扩散引擎 + KC + 输出协议
-│  └─ index.js              Node 侧统一入口
+│  └─ index.js              Node 侧统一入口（createKernel / listMechanisms / memoryDsr）
 ├─ mechanisms/              机制模块（一个文件一个机制；可增删）
-│  ├─ index.js              注册表：扫描 + 校验清单
-│  └─ memory.dsr.js         **v1.2 记忆层**：R0/S/Σ、三档复习、失败证据老化、排程反解
+│  ├─ index.js              注册表：扫描 + 校验清单 + 配置档（v2 / memory / legacy / extras）
+│  ├─ memory.dsr.js         **v1.2 记忆层**：R0/S/Σ、三档复习、失败证据老化、排程反解
+│  ├─ dynamics.shunting.js  **v1.3 激活**：分流方程（精确积分）+ 亚阈累积
+│  ├─ attention.capacity.js **v1.3 容量**：两级准入（DAR 4 + 焦点 1）
+│  ├─ attention.ignition.js **v1.3 点火**：概率点火（温度 + 可播种随机）
+│  ├─ rhythm.gate.js        **v1.3 节律**：占空比 / 走神马尔可夫 / θ，警觉衰减、负荷自适应节拍
+│  ├─ context.goal.js       **v1.3 上下文**：目标偏置（抬高通向目标的候选）
+│  ├─ attention.inhibition.js 侧抑制（实验性，默认不进 v2 档）
+│  └─ legacy_v1.js          v1.1 兼容包（用于差分等价测试）
 ├─ tools/mechanisms.js      机制目录报告 + 严格校验（`npm run mechanisms`）
 ├─ probe/                   只读诊断脚本
 │  ├─ learning_laws.js      v1.1 体检：答不上哪五条学习规律（`npm run probe`）
-│  ├─ learning_laws_v2.js   v2 对照：哪几条已翻转（`npm run probe:v2`）
+│  ├─ learning_laws_v2.js   v2 对照：五条规律逐条翻转（`npm run probe:v2`）
 │  └─ model_math_check.js   v2 数学自检：常数、单调性、容量、退化等价（`npm run math`）
 ├─ cli.js                   命令行外壳
 ├─ viz/                     可视化壳（HTML + CSS + 原生 JS，无框架）
@@ -98,9 +106,22 @@ mindnet/
 └─ package.json
 ```
 
-> **当前进度**：内核 + 插件架构 + **v1.2 记忆层**已实现（`mechanisms/memory.dsr.js`）。
-> v1.1 的旧语义**原样保留**在 `src/` 里，旧测试全部继续通过；v2 的记忆模块通过「把当前可提取度写回 `node.ms`」与旧扩散对接，属于渐进升级。
-> 快层（容量竞争、入边求和、分流方程、概率点火、节律门控）是 **v1.3**，方程已定、尚未实现——见 `docs/MODEL_v2_MATH.md` §4–§5。
+> **当前进度**：内核 + 插件架构 + **v1.2 记忆层** + **v1.3 快层**已实现。
+> v1.1 的旧语义**原样保留**在 `src/`（`CognitiveModel`），旧测试全部继续通过；
+> v2 走 `src/v2/engine.js` + `mechanisms/`，通过配置档（profile）切换，二者可在同一张图上做对照实验。
+> 剩下的 **v2.0 控制层**（元认知自信度与危险区、卡点分类 → 指令映射、反事实规划）尚未实现，方程见 `docs/MODEL_v2_MATH.md` §6–§7。
+
+**v2 怎么用（三行）**
+
+```js
+const { Graph, Config, createKernel, memoryDsr } = require('./src/index.js');
+const { FastEngine } = require('./src/v2/engine.js');
+const graph = Graph.load_from_json('example/demo_learning.json', 0);
+const engine = new FastEngine(graph, new Config(), { kernel: createKernel(graph, new Config(), { seed: 7, hours: 0 }) });
+engine.start_diffusion(['trig_func'], ['solve_triangle']);
+engine.run_until_stop(30);              // → 与 v1.1 相同的 §8.2 四字段
+memoryDsr.scheduleInterval(graph.get_node('solve_triangle'), 0, 0.85);  // → 下次复习间隔
+```
 
 ---
 
@@ -189,17 +210,18 @@ mindnet/
 
 | 命令 | 结果 |
 |---|---|
-| `npm test` | **59 / 59 通过**（41 项 v1.1 旧语义 + 18 项新增：内核契约、v1.2 记忆层验收） |
-| `npm run mechanisms -- --check` | 机制 schema 通过、静态扫描 0 项违规、验收断言 **6/6 通过** |
+| `npm test` | **68 / 68 通过**（41 项 v1.1 旧语义 + 27 项新增：内核契约、v1.2 记忆层、v1.3 快层与差分等价） |
+| `npm run mechanisms -- --check` | **8 个模块**：schema 通过、静态扫描 0 项违规、验收断言 **46 条全部通过** |
 | `npm run probe` | v1.1 体检：五条学习规律全部答不上（这是 v2 的立项依据） |
-| `npm run probe:v2` | v2 对照：规律 1、5 **已翻转**；规律 2/3/4 待 v1.3；新增排程反解（85% → 1.906×S）、复习分档 |
+| `npm run probe:v2` | v2 对照：**规律 1–5 全部翻转**（含容量 201→进入意识 2 / 在脑子里 10，距离衰减 0.81 恒定 → 0.983→0.194） |
 | `npm run math` | 数学自检 7 组全过（含 `t∈[0,200]h` 上 v1.1 与 v2 指数模式**最大差 = 0**） |
+| **差分等价**（`test/v2_fast.test.js`） | `FastEngine + legacy_v1` 在链 / 菱形 / 扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`，目标步数一致 |
 | `node cli.js example/graph.json --json` | 输出与文档 §8.2 逐字段一致 |
 | `node cli.js example/demo_learning.json` | `gap = 0.096`、`penalty = 0.4`、5 轮冷却停止、`polar` 死角 `visit = 1` |
 | Edge 无头浏览器打开 `viz/index.html` | 10 个 SVG 节点 / 11 条边 / 表格全部渲染，消息「已载入：10 个节点 / 11 条边」，无脚本报错 |
 | Edge 无头浏览器打开 `viz/index.html?selfcheck=1` | `SELFCHECK_OK`：角色设置 → 开始 → 单步 → 追加起点（`coordinate` 下一轮生效）→ 跑到底 → 专注复习 → 设为 10 小时前 → 全局记忆更新（`polar: 0.15 → 0.0093`）→ 导出 4432 字节状态；`transforms_ok=true`、`class_mismatch=0` |
 
-测试文件：`test/memory.test.js`（v1.1 遗忘曲线、复习、配置）、`test/diffusion.test.js`（v1.1 状态判定、永久亮着、多起点、追加、冷却、最大轮次、目标）、`test/kc.test.js`（v1.1 Gap / Penalty）、`test/graph.test.js`（加载与校验、严格有向）、`test/shell.test.js`（壳结构与 CLI）、`test/kernel.test.js`（**插件内核**：清单校验、依赖排序、错误隔离、不变量守卫、确定性、参数解析）、`test/v2_memory.test.js`（**v1.2 记忆层**：规律 1/5 翻转、提取练习效应、储蓄效应、排程反解、退化等价、难度调整）。
+测试文件：`test/memory.test.js`（v1.1 遗忘曲线、复习、配置）、`test/diffusion.test.js`（v1.1 状态判定、永久亮着、多起点、追加、冷却、最大轮次、目标）、`test/kc.test.js`（v1.1 Gap / Penalty）、`test/graph.test.js`（加载与校验、严格有向）、`test/shell.test.js`（壳结构与 CLI）、`test/kernel.test.js`（**插件内核**：清单校验、依赖排序、错误隔离、不变量守卫、确定性、参数解析）、`test/v2_memory.test.js`（**v1.2 记忆层**：规律 1/5 翻转、提取练习效应、储蓄效应、排程反解、退化等价、难度调整）、`test/v2_fast.test.js`（**v1.3 快层**：规律 2/3/4 翻转、概率点火可复现、节律门控、负荷自适应节拍、**与 v1.1 的差分等价**、协议与确定性）。
 
 **尚未验证**（说明原因，避免被当成已确认的结论）：
 
@@ -210,6 +232,10 @@ mindnet/
 - v2 的**参数标定**：`[文献]` 值来自 FSRS 公开默认参数（在别人的数据上拟合），`[未标定]` 值未经你的数据检验；标定状态在 `npm run mechanisms` 的目录报告里逐条列出。
 - **一个已知的标定敏感点**：`c_R0 = 0.05`（每次成功提取对编码上限 `R0` 的提升）未标定。按这个初值，`R0` 要从 0.8 升到 0.85 需要约 5 次成功提取；在那之前「以 85% 留存为目标排程」会返回间隔 `0`（因为曲线够不到目标）。这是模型的诚实结果，但初值需要按你的数据调。
 - 可视化壳**还没有接 v2**（仍用 v1.1 扩散与 `viz/app.js` 自己的记忆面板）；v2 的展示属于后续批次。
+- v1.3 的**快层参数**（α、λ、η_q、λ_q、T_ign、T0、duty、p_off/p_on、λ_load、τ_vig、β_goal、κ_reach）**全部未标定**：默认值是量级合理的取值，能让机制跑起来并复现定性规律，但**不能当作对你个人有效的准确参数**。
+- **侧抑制默认关闭**（`extras` 档）：未归一化的求和会让 200 个同构节点之间产生 18.1 的抑制量、把所有候选一次压死（实测），所以实现里改成饱和形式 `sat(x)=x/(1+x)` 并且默认 `γ=0`，等有数据再开。
+- **`target_steps` 在 v2 里信息量下降**：目标偏置会让目标节点从第 1 轮起就半亮，因此看传播距离要用峰值驱动或节点进入意识的轮次，不能只看 `target_steps`。
+- 与 v1.1 的**差分等价只覆盖状态演化**（`state` / `al` / 目标步数，链/菱形/扇出三张图）：v2 的冷却判据、KC 的 Penalty 口径与 v1.1 不同（v2 用时间衰减的失败证据），**没有声称逐位等价**。
 
 ---
 

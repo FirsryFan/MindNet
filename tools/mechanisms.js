@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadMechanisms } = require('../mechanisms/index.js');
+const { loadMechanisms, PROFILES } = require('../mechanisms/index.js');
 const { MechanismKernel } = require('../src/core/kernel.js');
 const { Graph, Config } = require('../src/index.js');
 
@@ -53,20 +53,28 @@ function staticScan(file) {
   return problems;
 }
 
-function buildKernel(loaded) {
+function buildKernel(loaded, ids) {
   const graph = Graph.from_object(
     { nodes: [{ id: 'probe_node', name: '探针节点', type: 'knowledge', ms: 0.8 }], edges: [] },
     0
   );
   const kernel = new MechanismKernel(graph, new Config(), { seed: 1, hours: 0 });
-  kernel.load(loaded.map((x) => x.manifest));
+  const picked = ids ? loaded.filter((x) => ids.includes(x.manifest.id)) : loaded;
+  kernel.load(picked.map((x) => x.manifest));
   return kernel;
 }
 
 function buildReport() {
   const loaded = loadMechanisms();
-  const kernel = buildKernel(loaded);
-  const acceptance = kernel.runAcceptance();
+  // 每个 profile 单独建内核跑验收（legacy_v1 与 v2 快层模块互斥）
+  const acceptance = [];
+  const perProfile = {};
+  for (const [name, ids] of Object.entries(PROFILES)) {
+    const kernel = buildKernel(loaded, ids);
+    const report = kernel.runAcceptance();
+    perProfile[name] = { kernel, report, ids };
+    acceptance.push(...report);
+  }
   const scan = {};
   for (const item of loaded) {
     scan[item.manifest.id] = staticScan(path.join(MECH_DIR, item.file));
@@ -91,10 +99,15 @@ function buildReport() {
       scan: scan[m.id],
     };
   });
+  const warnings = [];
+  for (const [name, entry] of Object.entries(perProfile)) {
+    for (const w of entry.kernel.warnings) warnings.push(Object.assign({ profile: name }, w));
+  }
   return {
-    kernel,
+    kernel: perProfile.v2.kernel,
+    profiles: perProfile,
     rows,
-    warnings: kernel.warnings,
+    warnings,
     acceptance,
     ok: rows.every((r) => r.scan.length === 0 && r.acceptance.every((a) => a.passed)),
   };
