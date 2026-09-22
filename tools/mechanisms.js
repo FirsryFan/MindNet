@@ -20,6 +20,8 @@ const ALLOWED_REQUIRE = [
   /^\.\.\/src\/config\.js$/,
   /^\.\.\/src\/model\.js$/,
   /^\.\.\/src\/core\//,
+  /^\.\.\/src\/v2\//,
+  /^\.\.\/\.\.\/mechanisms\/index\.js$/,
   /^\.\/[A-Za-z0-9_.-]+\.js$/,
 ];
 const FORBIDDEN = [

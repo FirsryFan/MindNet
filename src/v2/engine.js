@@ -18,7 +18,7 @@
   const deps = isNode
     ? Object.assign({}, require('../config.js'), require('../model.js'), require('../core/kernel.js'))
     : (globalThis.MindNet || {});
-  const { Config, MindNetError, STATE, MechanismKernel } = deps;
+  const { Config, MindNetError, STATE, MechanismKernel, Node, Edge } = deps;
 
   const STOP = Object.freeze({
     ALL_TARGETS_REACHED: 'all_targets_reached',
@@ -50,6 +50,15 @@
       this.graph = graph;
       this.config = config instanceof Config ? config : new Config(config);
       this.kernel = opts.kernel || new MechanismKernel(graph, this.config, opts);
+      // 记住装配参数，供克隆（反事实模拟）复用
+      this._options = {
+        seed: opts.seed === undefined ? 11 : opts.seed,
+        hours: opts.hours === undefined ? 0 : opts.hours,
+        profile: opts.profile,
+        mechanisms: opts.mechanisms,
+        overrides: opts.overrides || {},
+      };
+      this._lastRound = null;
       this._resetRuntime();
       this._running = false;
     }
@@ -241,7 +250,15 @@
 
       this.kernel.run('state.after', payload);
       for (const node of nodes) node.al = clamp01(this.core(node.id).a);
+      // 峰值驱动要覆盖**所有**节点（不只是亮过的）：诊断需要知道
+      // "这个节点到底收到了多少输入"，否则"线索太弱"会被记成 0%。
+      for (const node of nodes) {
+        const d = payload.drive ? payload.drive.get(node.id) || 0 : 0;
+        const prev = this._peakDrive.get(node.id);
+        if (prev === undefined || d > prev) this._peakDrive.set(node.id, d);
+      }
       this.kernel.run('round.after', payload);
+      this._lastRound = payload; // 供诊断读取「本轮为什么没亮」
 
       // 8) 停止判定（顺序与 v1.1 一致：目标 → 冷却 → 最大轮次）
       if (this._targets.length > 0 && this._all_targets_active()) {
@@ -335,6 +352,7 @@
 
     _recordActivation(id, drive) {
       if (!this._everActivated.has(id)) this._everActivated.add(id);
+      if (!this._firstActivation.has(id)) this._firstActivation.set(id, this._rounds);
       const d = Number(drive) || 0;
       const prev = this._peakDrive.get(id);
       if (prev === undefined || d > prev) this._peakDrive.set(id, d);
@@ -371,6 +389,7 @@
       this._target_set = new Set();
       this._target_steps = new Map();
       this._everActivated = new Set();
+      this._firstActivation = new Map();
       this._peakDrive = new Map();
       this._attempted = new Set();
       this._pending_starts = [];
@@ -405,7 +424,7 @@
      * 没有记忆模块时退化为 v1.1 口径（本次扩散尝试过、始终未激活 → 计数 1）。
      */
     _penalty() {
-      const diag = this.kernel.diagnose();
+      const diag = this.kernel.diagnose(this._diagnosePayload());
       for (const d of diag) {
         if (d.out && d.out.memory && typeof d.out.memory.penalty === 'number') {
           return d.out.memory.penalty;
@@ -467,10 +486,11 @@
       return Object.assign({}, this.result(), {
         rounds: this._rounds,
         stop_reason: this._stop_reason,
-        availability_last: 1,
+        availability_last: this._lastRound ? this._lastRound.availability : 1,
         nodes,
         mechanisms: this.kernel.enabledIds(),
         mechanism_state: this.kernel.serialize(),
+        control: this.control_report(),
         warnings: this.kernel.warnings.slice(),
       });
     }
@@ -482,6 +502,145 @@
         require('fs').writeFileSync(path, `${JSON.stringify(s, null, 2)}\n`, 'utf8');
       }
       return s;
+    }
+
+    // ------------------------------------------------------ 诊断 / 反事实
+
+    /**
+     * 诊断事实表：把「为什么这个节点没亮」摊平成可判定的字段，
+     * 控制层模块（卡点分类、元认知、处方）都从这里读，不需要访问引擎内部。
+     */
+    diagnostic_facts() {
+      const last = this._lastRound || {};
+      const facts = {};
+      for (const node of this.graph.nodes.values()) {
+        const c = this.core(node.id);
+        const mem = (node.m && node.m.memory_dsr) || null;
+        facts[node.id] = {
+          id: node.id,
+          name: node.name,
+          state: node.state,
+          a: round6(c.a),
+          q: round6(c.q),
+          drive: round6(last.drive ? last.drive.get(node.id) || 0 : 0),
+          score: round6(last.scores ? last.scores.get(node.id) || 0 : 0),
+          peak_drive: round6(this._peakDrive.get(node.id) || 0),
+          ct: node.ct_of(this.config),
+          st: node.st_of(this.config),
+          in_degree: this.graph.in_edges(node.id).length,
+          out_degree: this.graph.out_edges(node.id).length,
+          ever_activated: this._everActivated.has(node.id),
+          first_activation_round: this._firstActivation.has(node.id) ? this._firstActivation.get(node.id) : null,
+          activated_at_round: this._target_steps.has(node.id) ? this._target_steps.get(node.id) : null,
+          outcompeted: Array.isArray(last.outcompeted) ? last.outcompeted.indexOf(node.id) >= 0 : false,
+          is_target: this._target_set.has(node.id),
+          is_start: this._starts.has(node.id),
+          R: typeof node.ms === 'number' ? round6(node.ms) : 0,
+          R0: mem ? round6(mem.R0) : null,
+          S: mem ? round6(mem.S) : null,
+          D: mem ? round6(mem.D) : null,
+          F: mem ? round6(mem.F) : 0,
+        };
+      }
+      return facts;
+    }
+
+    _diagnosePayload() {
+      return {
+        round: this._rounds,
+        hours: this.kernel.hours,
+        starts: this._start_order.slice(),
+        targets: this._targets.slice(),
+        facts: this.diagnostic_facts(),
+        stopped: this._stopped,
+        stop_reason: this._stop_reason,
+        engine: this, // 反事实规划器需要克隆引擎；这是给规划器的受控入口
+      };
+    }
+
+    /** 控制层报告：诊断 + 元认知 + 处方清单（由模块产出，引擎只汇总） */
+    control_report() {
+      const results = this.kernel.diagnose(this._diagnosePayload());
+      const report = { facts: this.diagnostic_facts(), metacognition: null, diagnosis: [], plan: [], warnings: [] };
+      report.baseline_reachability = this.reachability();
+      for (const r of results) {
+        const o = r.out || {};
+        if (o.metacognition) report.metacognition = o.metacognition;
+        if (Array.isArray(o.bottlenecks)) report.diagnosis = o.bottlenecks;
+        if (Array.isArray(o.plan)) report.plan = o.plan;
+        if (o.memory) report.memory = o.memory;
+      }
+      report.warnings = this.kernel.warnings.slice();
+      return report;
+    }
+
+    /**
+     * 克隆：用于反事实模拟（"如果现在做 X，3 轮后目标可达性提高多少"）。
+     * 复制图、记忆状态、快状态与运行时计数；用同一 seed 重建内核，保证可比性。
+     */
+    clone() {
+      const g = new (this.graph.constructor)();
+      for (const n of this.graph.nodes.values()) {
+        const copy = new Node({
+          id: n.id, name: n.name, type: n.type, weight: n.weight, ms: n.ms,
+          ct: n.ct, st: n.st, last_review_time: n.last_review_time,
+          visit_count: n.visit_count, stm: n.stm,
+        });
+        copy.state = n.state;
+        copy.al = n.al;
+        copy.m = JSON.parse(JSON.stringify(n.m || {}));
+        g.add_node(copy);
+      }
+      for (const e of this.graph.edges) {
+        g.add_edge(new Edge({ id: e.id, from: e.from, to: e.to, ls: e.ls }));
+      }
+      const opts = Object.assign({}, this._options, {
+        hours: this.kernel.hours,
+        overrides: Object.assign({}, this._options.overrides), // 必须是独立副本
+      });
+      const kernel = new MechanismKernel(g, this.config, opts);
+      const registry = isNode ? require('../../mechanisms/index.js') : null;
+      if (registry) {
+        const loaded = registry.loadMechanisms();
+        const ids = this._options.mechanisms || registry.PROFILES[this._options.profile || 'v2'];
+        kernel.load(registry.pickMechanisms(loaded, ids));
+      }
+      kernel.tick = this.kernel.tick;
+      const copyEngine = new FastEngine(g, this.config, Object.assign({}, opts, { kernel }));
+      copyEngine.start_diffusion(this._start_order.slice(), this._targets.slice());
+      // 复刻运行时状态（start_diffusion 会重置节点，所以要在它之后再恢复）
+      copyEngine._rounds = this._rounds;
+      copyEngine._everActivated = new Set(this._everActivated);
+      copyEngine._firstActivation = new Map(this._firstActivation);
+      copyEngine._peakDrive = new Map(this._peakDrive);
+      copyEngine._attempted = new Set(this._attempted);
+      copyEngine._target_steps = new Map(this._target_steps);
+      copyEngine._prev_snapshot = this._prev_snapshot;
+      copyEngine._quiet = this._quiet;
+      copyEngine._stopped = false;
+      copyEngine._stop_reason = null;
+      copyEngine._targets_all_reached = this._targets_all_reached;
+      for (const n of this.graph.nodes.values()) {
+        const c = copyEngine.graph.get_node(n.id);
+        c.state = n.state;
+        c.al = n.al;
+        copyEngine.core(n.id).a = this.core(n.id).a;
+        copyEngine.core(n.id).q = this.core(n.id).q;
+      }
+      return copyEngine;
+    }
+
+    /** 目标可达性标量：反事实比较用的统一指标 */
+    reachability(targets) {
+      const list = targets || this._targets;
+      let score = 0;
+      for (const id of list) {
+        const node = this.graph.get_node(id);
+        if (!node) continue;
+        score += this.core(id).a;
+        if (this._everActivated.has(id)) score += 0.5;
+      }
+      return round6(score);
     }
 
     // ---------------------------------------------------------- 只读视图

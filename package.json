@@ -10,6 +10,7 @@
     "mechanisms": "node tools/mechanisms.js",
     "probe": "node probe/learning_laws.js",
     "probe:v2": "node probe/learning_laws_v2.js",
+    "control": "node probe/control_report.js",
     "math": "node probe/model_math_check.js",
     "samples": "node viz/build_samples.js"
   },

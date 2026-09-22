@@ -43,7 +43,7 @@ function pickMechanisms(list, ids) {
 
 /** 预置配置：新旧模型不是两套代码，而是两份模块清单 */
 const PROFILES = Object.freeze({
-  // v2 快层 + 记忆层（默认）
+  // v2 快层 + 记忆层 + 控制层（默认）
   v2: [
     'memory.dsr',
     'context.goal',
@@ -51,6 +51,9 @@ const PROFILES = Object.freeze({
     'dynamics.shunting',
     'attention.capacity',
     'attention.ignition',
+    'metacognition.belief',
+    'diagnosis.bottleneck',
+    'control.planner',
   ],
   // 只要记忆层（旧扩散 + 新记忆）
   memory: ['memory.dsr'],

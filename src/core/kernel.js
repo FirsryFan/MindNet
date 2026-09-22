@@ -154,7 +154,8 @@
       this.graph = graph;
       this.config = config instanceof Config ? config : new Config(config);
       this.seed = opts.seed === undefined ? 20260921 : opts.seed;
-      this.overrides = opts.overrides || {};
+      // 防御性拷贝：克隆引擎时若共享同一个 overrides 对象，反事实干预会互相污染
+      this.overrides = Object.assign({}, opts.overrides || {});
       this.tick = 0;
       this.round = 0;
       this.hours = opts.hours === undefined ? 0 : opts.hours;
@@ -334,8 +335,9 @@
       return this.run('consolidate.on', { nodeIds: nodeIds || null });
     }
 
-    diagnose() {
-      this.diagnostics = this.run('diagnose.on', {});
+    /** 诊断：payload 由调用方（引擎）提供，模块从中读「为什么没亮」的事实 */
+    diagnose(payload) {
+      this.diagnostics = this.run('diagnose.on', payload || {});
       return this.diagnostics;
     }
 

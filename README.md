@@ -86,12 +86,16 @@ mindnet/
 │  ├─ attention.ignition.js **v1.3 点火**：概率点火（温度 + 可播种随机）
 │  ├─ rhythm.gate.js        **v1.3 节律**：占空比 / 走神马尔可夫 / θ，警觉衰减、负荷自适应节拍
 │  ├─ context.goal.js       **v1.3 上下文**：目标偏置（抬高通向目标的候选）
+│  ├─ metacognition.belief.js **v2.0 元认知**：流畅性驱动的自信度、危险区 / 焦虑区、校准度
+│  ├─ diagnosis.bottleneck.js **v2.0 诊断**：空（无入口/线索太弱）/ 弱 / 慢 / 超载 / 跑偏 / 死路
+│  ├─ control.planner.js    **v2.0 处方**：诊断 → 指令库映射 → 反事实预测（留存 / 可达性）
 │  ├─ attention.inhibition.js 侧抑制（实验性，默认不进 v2 档）
 │  └─ legacy_v1.js          v1.1 兼容包（用于差分等价测试）
 ├─ tools/mechanisms.js      机制目录报告 + 严格校验（`npm run mechanisms`）
 ├─ probe/                   只读诊断脚本
 │  ├─ learning_laws.js      v1.1 体检：答不上哪五条学习规律（`npm run probe`）
 │  ├─ learning_laws_v2.js   v2 对照：五条规律逐条翻转（`npm run probe:v2`）
+│  ├─ control_report.js     **v2.0 控制层报告**：诊断 + 处方 + 反事实预测（`npm run control`）
 │  └─ model_math_check.js   v2 数学自检：常数、单调性、容量、退化等价（`npm run math`）
 ├─ cli.js                   命令行外壳
 ├─ viz/                     可视化壳（HTML + CSS + 原生 JS，无框架）
@@ -106,12 +110,11 @@ mindnet/
 └─ package.json
 ```
 
-> **当前进度**：内核 + 插件架构 + **v1.2 记忆层** + **v1.3 快层**已实现。
+> **当前进度**：内核 + 插件架构 + **v1.2 记忆层** + **v1.3 快层** + **v2.0 控制层**已实现。
 > v1.1 的旧语义**原样保留**在 `src/`（`CognitiveModel`），旧测试全部继续通过；
 > v2 走 `src/v2/engine.js` + `mechanisms/`，通过配置档（profile）切换，二者可在同一张图上做对照实验。
-> 剩下的 **v2.0 控制层**（元认知自信度与危险区、卡点分类 → 指令映射、反事实规划）尚未实现，方程见 `docs/MODEL_v2_MATH.md` §6–§7。
 
-**v2 怎么用（三行）**
+**v2 怎么用（五行）**
 
 ```js
 const { Graph, Config, createKernel, memoryDsr } = require('./src/index.js');
@@ -119,8 +122,22 @@ const { FastEngine } = require('./src/v2/engine.js');
 const graph = Graph.load_from_json('example/demo_learning.json', 0);
 const engine = new FastEngine(graph, new Config(), { kernel: createKernel(graph, new Config(), { seed: 7, hours: 0 }) });
 engine.start_diffusion(['trig_func'], ['solve_triangle']);
-engine.run_until_stop(30);              // → 与 v1.1 相同的 §8.2 四字段
-memoryDsr.scheduleInterval(graph.get_node('solve_triangle'), 0, 0.85);  // → 下次复习间隔
+for (let i = 0; i < 3; i += 1) engine.step();          // 学到一半
+const report = engine.control_report();                 // 诊断 + 元认知 + 处方（含预测增益）
+memoryDsr.scheduleInterval(graph.get_node('solve_triangle'), 0, 0.85);  // → 下次复习间隔 = 1.906 × S
+```
+
+`engine.control_report()` 的形状：
+
+```js
+{
+  facts: {...},                                  // 逐节点诊断事实（峰值驱动、容量是否被挤出…）
+  metacognition: { danger: [...], anxiety: [...], calibration: 0.13, rows: [...] },
+  diagnosis: [{ node, type: 'empty', subtype: 'too_faint', label, note, prescriptions: [...] }],
+  plan: [{ node, instruction: 'add_in_edges', instruction_name: '增加入边…',
+           simulated: true, metric: 'reachability', gain: 0.706, cost: 2, value: 0.353, why: '…' }],
+  baseline_reachability: 0.589
+}
 ```
 
 ---
