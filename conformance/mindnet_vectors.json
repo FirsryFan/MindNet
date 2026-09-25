@@ -1,0 +1,1575 @@
+{
+  "protocol": "mindnet.conformance/1",
+  "generated_from": {
+    "repo": "https://github.com/FirsryFan/MindNet",
+    "commit": "5f7ad4644f20f5af7af7f004f78fa85cf1723446",
+    "package_version": "2.0.0-alpha.1",
+    "generator": "tools/conformance.js"
+  },
+  "how_to_use": [
+    "Dart 侧逐条读 tierA/tierB，用 input 调自己的实现，与 expected 逐字段比对。",
+    "整数/布尔/字符串/集合成员：必须完全相等。",
+    "浮点：先按 tolerances 判\"是否一致\"，再判\"round6 后是否相同\"。",
+    "tierB 的 rounds[i] 必须按顺序比；drive/scores/a/q 是每轮结束后的值。"
+  ],
+  "tolerances": {
+    "rel": 1e-12,
+    "abs": 1e-15,
+    "rounded_decimals": 6,
+    "note": "加和顺序必须与输入 edges 数组顺序一致，否则 drive 会有 ~1e-16 级别差异；pow/exp 在不同语言 libm 下可能差 1 ulp，所以先比容差、再比 round6。",
+    "must_be_exact": [
+      "admitted",
+      "focus",
+      "outcompeted",
+      "conscious",
+      "subconscious",
+      "states[].state_after",
+      "kind"
+    ]
+  },
+  "tierA": [
+    {
+      "id": "A01-constants",
+      "api": "memoryDsr.curveC / defaults",
+      "input": {
+        "gamma": 0.1542,
+        "decay_model": "power"
+      },
+      "expected": {
+        "c": 0.980346,
+        "kappa": 8.01921,
+        "beta": 0.1367,
+        "eta": 1.0461
+      }
+    },
+    {
+      "id": "A02-psi-power-z0",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 0,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 1
+      }
+    },
+    {
+      "id": "A02-psi-power-z0.1",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 0.1,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.985682
+      }
+    },
+    {
+      "id": "A02-psi-power-z0.5",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 0.5,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.940344
+      }
+    },
+    {
+      "id": "A02-psi-power-z1",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 1,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.9
+      }
+    },
+    {
+      "id": "A02-psi-power-z2",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 2,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.845885
+      }
+    },
+    {
+      "id": "A02-psi-power-z3.88",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 3.88,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.785056
+      }
+    },
+    {
+      "id": "A02-psi-power-z5",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 5,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.760528
+      }
+    },
+    {
+      "id": "A02-psi-power-z10",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 10,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.692827
+      }
+    },
+    {
+      "id": "A02-psi-power-z45.1",
+      "api": "memoryDsr.psi(z, {decay_model:\"power\"})",
+      "input": {
+        "z": 45.1,
+        "gamma": 0.1542
+      },
+      "expected": {
+        "psi": 0.555594
+      }
+    },
+    {
+      "id": "A03-psi-exponential-z0",
+      "api": "memoryDsr.psi(z, {decay_model:\"exponential\"})",
+      "input": {
+        "z": 0,
+        "decay_model": "exponential"
+      },
+      "expected": {
+        "psi": 1
+      }
+    },
+    {
+      "id": "A03-psi-exponential-z0.5",
+      "api": "memoryDsr.psi(z, {decay_model:\"exponential\"})",
+      "input": {
+        "z": 0.5,
+        "decay_model": "exponential"
+      },
+      "expected": {
+        "psi": 0.606531
+      }
+    },
+    {
+      "id": "A03-psi-exponential-z1",
+      "api": "memoryDsr.psi(z, {decay_model:\"exponential\"})",
+      "input": {
+        "z": 1,
+        "decay_model": "exponential"
+      },
+      "expected": {
+        "psi": 0.367879
+      }
+    },
+    {
+      "id": "A03-psi-exponential-z2",
+      "api": "memoryDsr.psi(z, {decay_model:\"exponential\"})",
+      "input": {
+        "z": 2,
+        "decay_model": "exponential"
+      },
+      "expected": {
+        "psi": 0.135335
+      }
+    },
+    {
+      "id": "A04-retrievability-t0",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 0
+      },
+      "expected": {
+        "R": 0.8,
+        "ms": 0.8
+      }
+    },
+    {
+      "id": "A04-retrievability-t1",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 1
+      },
+      "expected": {
+        "R": 0.79388,
+        "ms": 0.79388
+      }
+    },
+    {
+      "id": "A04-retrievability-t5",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5
+      },
+      "expected": {
+        "R": 0.772437,
+        "ms": 0.772437
+      }
+    },
+    {
+      "id": "A04-retrievability-t10",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 10
+      },
+      "expected": {
+        "R": 0.750698,
+        "ms": 0.750698
+      }
+    },
+    {
+      "id": "A04-retrievability-t48",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 48
+      },
+      "expected": {
+        "R": 0.660909,
+        "ms": 0.660909
+      }
+    },
+    {
+      "id": "A04-retrievability-t200",
+      "api": "memoryDsr.retrievabilityOf(node, t)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 200
+      },
+      "expected": {
+        "R": 0.551098,
+        "ms": 0.551098
+      }
+    },
+    {
+      "id": "A05-schedule-target0.95",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.95
+      },
+      "expected": {
+        "hours": 7.729127
+      }
+    },
+    {
+      "id": "A05-schedule-target0.9",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.9
+      },
+      "expected": {
+        "hours": 19.2
+      }
+    },
+    {
+      "id": "A05-schedule-target0.85",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.85
+      },
+      "expected": {
+        "hours": 36.603382
+      }
+    },
+    {
+      "id": "A05-schedule-target0.8",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.8
+      },
+      "expected": {
+        "hours": 63.666428
+      }
+    },
+    {
+      "id": "A05-schedule-target0.7",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.7
+      },
+      "expected": {
+        "hours": 178.327895
+      }
+    },
+    {
+      "id": "A05-schedule-target0.5",
+      "api": "memoryDsr.scheduleInterval(node, 0, target)",
+      "input": {
+        "state": {
+          "R0": 1,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "now": 0,
+        "target": 0.5
+      },
+      "expected": {
+        "hours": 1734.806646
+      }
+    },
+    {
+      "id": "A06-applyReview-retrieval_success-t5",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 245.041939,
+        "R0_after": 0.81,
+        "Sigma_after": 0.872756,
+        "D_after": 5.275581,
+        "R_after": 0.81,
+        "SInc": 12.762601,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-retrieval_success-t30",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 30,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 337.132607,
+        "R0_after": 0.81,
+        "Sigma_after": 0.880676,
+        "D_after": 5.315182,
+        "R_after": 0.81,
+        "SInc": 17.55899,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-reread-t5",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5,
+        "event": {
+          "type": "reread"
+        }
+      },
+      "expected": {
+        "S_after": 41.784194,
+        "R0_after": 0.8,
+        "Sigma_after": 0.872756,
+        "D_after": 5.275581,
+        "R_after": 0.8,
+        "SInc": 2.17626,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-reread-t30",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 30,
+        "event": {
+          "type": "reread"
+        }
+      },
+      "expected": {
+        "S_after": 50.993261,
+        "R0_after": 0.8,
+        "Sigma_after": 0.880676,
+        "D_after": 5.315182,
+        "R_after": 0.8,
+        "SInc": 2.655899,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-failure_feedback-c0.4-t5",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5,
+        "event": {
+          "type": "retrieval_failure_feedback",
+          "closeness": 0.4
+        }
+      },
+      "expected": {
+        "S_after": 109.536775,
+        "R0_after": 0.8,
+        "Sigma_after": 0.882756,
+        "D_after": 5.275581,
+        "R_after": 0.8,
+        "SInc": 5.70504,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-failure_feedback-c0.4-t30",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 30,
+        "event": {
+          "type": "retrieval_failure_feedback",
+          "closeness": 0.4
+        }
+      },
+      "expected": {
+        "S_after": 146.373043,
+        "R0_after": 0.8,
+        "Sigma_after": 0.890676,
+        "D_after": 5.315182,
+        "R_after": 0.8,
+        "SInc": 7.623596,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-failure_feedback-c0.9-t5",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5,
+        "event": {
+          "type": "retrieval_failure_feedback",
+          "closeness": 0.9
+        }
+      },
+      "expected": {
+        "S_after": 222.457745,
+        "R0_after": 0.8,
+        "Sigma_after": 0.832756,
+        "D_after": 5.275581,
+        "R_after": 0.8,
+        "SInc": 11.586341,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-failure_feedback-c0.9-t30",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 30,
+        "event": {
+          "type": "retrieval_failure_feedback",
+          "closeness": 0.9
+        }
+      },
+      "expected": {
+        "S_after": 305.339346,
+        "R0_after": 0.8,
+        "Sigma_after": 0.840676,
+        "D_after": 5.315182,
+        "R_after": 0.8,
+        "SInc": 15.903091,
+        "kind": "review"
+      }
+    },
+    {
+      "id": "A06-applyReview-lapse-t5",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 5,
+        "event": {
+          "type": "lapse",
+          "grade": 1
+        }
+      },
+      "expected": {
+        "S_after": 4.387964,
+        "R0_after": 0.8,
+        "Sigma_after": 0.872756,
+        "D_after": 5.475581,
+        "R_after": 0.8,
+        "SInc": null,
+        "kind": "lapse"
+      }
+    },
+    {
+      "id": "A06-applyReview-lapse-t30",
+      "api": "memoryDsr.applyReview(node, t, event)",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 30,
+        "event": {
+          "type": "lapse",
+          "grade": 1
+        }
+      },
+      "expected": {
+        "S_after": 4.975655,
+        "R0_after": 0.8,
+        "Sigma_after": 0.880676,
+        "D_after": 5.515182,
+        "R_after": 0.8,
+        "SInc": null,
+        "kind": "lapse"
+      }
+    },
+    {
+      "id": "A07-grade1-difficulty",
+      "api": "memoryDsr.applyReview(node, 20, {type:\"retrieval_success\", grade})",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 1
+        }
+      },
+      "expected": {
+        "S_after": 307.825574,
+        "D_after": 5.502932,
+        "Sigma_after": 0.878226
+      }
+    },
+    {
+      "id": "A07-grade2-difficulty",
+      "api": "memoryDsr.applyReview(node, 20, {type:\"retrieval_success\", grade})",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 2
+        }
+      },
+      "expected": {
+        "S_after": 307.825574,
+        "D_after": 5.402932,
+        "Sigma_after": 0.878226
+      }
+    },
+    {
+      "id": "A07-grade3-difficulty",
+      "api": "memoryDsr.applyReview(node, 20, {type:\"retrieval_success\", grade})",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 307.825574,
+        "D_after": 5.302932,
+        "Sigma_after": 0.878226
+      }
+    },
+    {
+      "id": "A07-grade4-difficulty",
+      "api": "memoryDsr.applyReview(node, 20, {type:\"retrieval_success\", grade})",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.8,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 4
+        }
+      },
+      "expected": {
+        "S_after": 307.825574,
+        "D_after": 5.202932,
+        "Sigma_after": 0.878226
+      }
+    },
+    {
+      "id": "A08-savings-sigma0",
+      "api": "memoryDsr.applyReview（Σ 越大增益越大）",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 225.361124,
+        "SInc": 11.737559
+      }
+    },
+    {
+      "id": "A08-savings-sigma0.5",
+      "api": "memoryDsr.applyReview（Σ 越大增益越大）",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.5,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 276.901405,
+        "SInc": 14.421948
+      }
+    },
+    {
+      "id": "A08-savings-sigma0.9",
+      "api": "memoryDsr.applyReview（Σ 越大增益越大）",
+      "input": {
+        "state": {
+          "R0": 0.8,
+          "S": 19.2,
+          "Sigma": 0.9,
+          "D": 5.1618,
+          "N": 0,
+          "F": 0,
+          "lastFail": null,
+          "lastReview": 0,
+          "history": [],
+          "initializedAt": 0
+        },
+        "t": 20,
+        "event": {
+          "type": "retrieval_success",
+          "grade": 3
+        }
+      },
+      "expected": {
+        "S_after": 318.13363,
+        "SInc": 16.56946
+      }
+    }
+  ],
+  "tierB": [
+    {
+      "id": "B01-fast-layer-chain-5-rounds",
+      "api": "FastEngine（mechanisms=[shunting,capacity,ignition,goal], T_ign=0）",
+      "input": {
+        "graph": {
+          "nodes": [
+            {
+              "id": "A",
+              "name": "前置",
+              "type": "knowledge",
+              "ms": 0.8,
+              "weight": 1
+            },
+            {
+              "id": "B",
+              "name": "中间",
+              "type": "knowledge",
+              "ms": 0.7,
+              "weight": 1
+            },
+            {
+              "id": "C",
+              "name": "目标",
+              "type": "knowledge",
+              "ms": 0.6,
+              "weight": 1
+            }
+          ],
+          "edges": [
+            {
+              "id": "e1",
+              "from": "A",
+              "to": "B",
+              "ls": 0.9
+            },
+            {
+              "id": "e2",
+              "from": "B",
+              "to": "C",
+              "ls": 0.8
+            },
+            {
+              "id": "e3",
+              "from": "A",
+              "to": "C",
+              "ls": 0.3
+            }
+          ]
+        },
+        "initial_nodes": [
+          "A"
+        ],
+        "target_nodes": [
+          "C"
+        ],
+        "seed": 7,
+        "hours": 0,
+        "mechanisms": [
+          "dynamics.shunting",
+          "attention.capacity",
+          "attention.ignition",
+          "context.goal"
+        ],
+        "overrides": {
+          "attention.ignition.T_ign": 0
+        },
+        "module_defaults": {
+          "dynamics.shunting": {
+            "alpha_a": 0.5,
+            "lambda_a": 0.2,
+            "eta_q": 0.5,
+            "lambda_q": 0.3
+          },
+          "attention.capacity": {
+            "W_DAR": 4,
+            "W_FA": 1
+          },
+          "attention.ignition": {
+            "T_ign": 0.05
+          },
+          "context.goal": {
+            "beta_goal": 0.3,
+            "kappa_reach": 0.5,
+            "fan_k": 0
+          }
+        }
+      },
+      "expected": {
+        "rounds": [
+          {
+            "round": 1,
+            "cycle_ticks": 1,
+            "availability": 1,
+            "drive": {
+              "A": 0.15,
+              "B": 0.87,
+              "C": 0.24
+            },
+            "drive_edges": [
+              {
+                "from": "A",
+                "to": "B",
+                "edge_id": "e1",
+                "kind": "edge",
+                "ls": 0.9,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.72
+              },
+              {
+                "from": "A",
+                "to": "C",
+                "edge_id": "e3",
+                "kind": "edge",
+                "ls": 0.3,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.24
+              },
+              {
+                "from": null,
+                "to": "A",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              },
+              {
+                "from": null,
+                "to": "B",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              }
+            ],
+            "scores": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "admitted": [
+              "A",
+              "B",
+              "C"
+            ],
+            "focus": "A",
+            "dar_used": 1.4247068080766696,
+            "outcompeted": [],
+            "conscious": [
+              "A",
+              "B"
+            ],
+            "subconscious": [
+              "C"
+            ],
+            "states": [
+              {
+                "id": "A",
+                "state_after": "CONSCIOUS",
+                "al": 1
+              },
+              {
+                "id": "B",
+                "state_after": "CONSCIOUS",
+                "al": 0.322013
+              },
+              {
+                "id": "C",
+                "state_after": "SUBCONSCIOUS",
+                "al": 0.102694
+              }
+            ],
+            "a": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "q": {
+              "A": 0,
+              "B": 0,
+              "C": 0.051347
+            }
+          },
+          {
+            "round": 1,
+            "cycle_ticks": 1,
+            "availability": 1,
+            "drive": {
+              "A": 0.15,
+              "B": 0.87,
+              "C": 0.24
+            },
+            "drive_edges": [
+              {
+                "from": "A",
+                "to": "B",
+                "edge_id": "e1",
+                "kind": "edge",
+                "ls": 0.9,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.72
+              },
+              {
+                "from": "A",
+                "to": "C",
+                "edge_id": "e3",
+                "kind": "edge",
+                "ls": 0.3,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.24
+              },
+              {
+                "from": null,
+                "to": "A",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              },
+              {
+                "from": null,
+                "to": "B",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              }
+            ],
+            "scores": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "admitted": [
+              "A",
+              "B",
+              "C"
+            ],
+            "focus": "A",
+            "dar_used": 1.4247068080766696,
+            "outcompeted": [],
+            "conscious": [
+              "A",
+              "B"
+            ],
+            "subconscious": [
+              "C"
+            ],
+            "states": [
+              {
+                "id": "A",
+                "state_after": "CONSCIOUS",
+                "al": 1
+              },
+              {
+                "id": "B",
+                "state_after": "CONSCIOUS",
+                "al": 0.322013
+              },
+              {
+                "id": "C",
+                "state_after": "SUBCONSCIOUS",
+                "al": 0.102694
+              }
+            ],
+            "a": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "q": {
+              "A": 0,
+              "B": 0,
+              "C": 0.051347
+            }
+          },
+          {
+            "round": 1,
+            "cycle_ticks": 1,
+            "availability": 1,
+            "drive": {
+              "A": 0.15,
+              "B": 0.87,
+              "C": 0.24
+            },
+            "drive_edges": [
+              {
+                "from": "A",
+                "to": "B",
+                "edge_id": "e1",
+                "kind": "edge",
+                "ls": 0.9,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.72
+              },
+              {
+                "from": "A",
+                "to": "C",
+                "edge_id": "e3",
+                "kind": "edge",
+                "ls": 0.3,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.24
+              },
+              {
+                "from": null,
+                "to": "A",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              },
+              {
+                "from": null,
+                "to": "B",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              }
+            ],
+            "scores": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "admitted": [
+              "A",
+              "B",
+              "C"
+            ],
+            "focus": "A",
+            "dar_used": 1.4247068080766696,
+            "outcompeted": [],
+            "conscious": [
+              "A",
+              "B"
+            ],
+            "subconscious": [
+              "C"
+            ],
+            "states": [
+              {
+                "id": "A",
+                "state_after": "CONSCIOUS",
+                "al": 1
+              },
+              {
+                "id": "B",
+                "state_after": "CONSCIOUS",
+                "al": 0.322013
+              },
+              {
+                "id": "C",
+                "state_after": "SUBCONSCIOUS",
+                "al": 0.102694
+              }
+            ],
+            "a": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "q": {
+              "A": 0,
+              "B": 0,
+              "C": 0.051347
+            }
+          },
+          {
+            "round": 1,
+            "cycle_ticks": 1,
+            "availability": 1,
+            "drive": {
+              "A": 0.15,
+              "B": 0.87,
+              "C": 0.24
+            },
+            "drive_edges": [
+              {
+                "from": "A",
+                "to": "B",
+                "edge_id": "e1",
+                "kind": "edge",
+                "ls": 0.9,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.72
+              },
+              {
+                "from": "A",
+                "to": "C",
+                "edge_id": "e3",
+                "kind": "edge",
+                "ls": 0.3,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.24
+              },
+              {
+                "from": null,
+                "to": "A",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              },
+              {
+                "from": null,
+                "to": "B",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              }
+            ],
+            "scores": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "admitted": [
+              "A",
+              "B",
+              "C"
+            ],
+            "focus": "A",
+            "dar_used": 1.4247068080766696,
+            "outcompeted": [],
+            "conscious": [
+              "A",
+              "B"
+            ],
+            "subconscious": [
+              "C"
+            ],
+            "states": [
+              {
+                "id": "A",
+                "state_after": "CONSCIOUS",
+                "al": 1
+              },
+              {
+                "id": "B",
+                "state_after": "CONSCIOUS",
+                "al": 0.322013
+              },
+              {
+                "id": "C",
+                "state_after": "SUBCONSCIOUS",
+                "al": 0.102694
+              }
+            ],
+            "a": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "q": {
+              "A": 0,
+              "B": 0,
+              "C": 0.051347
+            }
+          },
+          {
+            "round": 1,
+            "cycle_ticks": 1,
+            "availability": 1,
+            "drive": {
+              "A": 0.15,
+              "B": 0.87,
+              "C": 0.24
+            },
+            "drive_edges": [
+              {
+                "from": "A",
+                "to": "B",
+                "edge_id": "e1",
+                "kind": "edge",
+                "ls": 0.9,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.72
+              },
+              {
+                "from": "A",
+                "to": "C",
+                "edge_id": "e3",
+                "kind": "edge",
+                "ls": 0.3,
+                "al": 1,
+                "ms": 0.8,
+                "contribution": 0.24
+              },
+              {
+                "from": null,
+                "to": "A",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              },
+              {
+                "from": null,
+                "to": "B",
+                "edge_id": null,
+                "kind": "module",
+                "module": "drive.compute",
+                "ls": null,
+                "al": null,
+                "ms": null,
+                "contribution": 0.15
+              }
+            ],
+            "scores": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "admitted": [
+              "A",
+              "B",
+              "C"
+            ],
+            "focus": "A",
+            "dar_used": 1.4247068080766696,
+            "outcompeted": [],
+            "conscious": [
+              "A",
+              "B"
+            ],
+            "subconscious": [
+              "C"
+            ],
+            "states": [
+              {
+                "id": "A",
+                "state_after": "CONSCIOUS",
+                "al": 1
+              },
+              {
+                "id": "B",
+                "state_after": "CONSCIOUS",
+                "al": 0.322013
+              },
+              {
+                "id": "C",
+                "state_after": "SUBCONSCIOUS",
+                "al": 0.102694
+              }
+            ],
+            "a": {
+              "A": 1,
+              "B": 0.322013,
+              "C": 0.102694
+            },
+            "q": {
+              "A": 0,
+              "B": 0,
+              "C": 0.051347
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
