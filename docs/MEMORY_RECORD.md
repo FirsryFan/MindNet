@@ -56,7 +56,12 @@
   - `22be258` 统一入口 `createKernel` / `listMechanisms`
   - `fed8db8` v1.3 快层（容量竞争、入边求和、分流方程、概率点火、节律门控、目标偏置）
   - `9c07459` **v2.0 控制层**（元认知自信度、卡点诊断、处方规划器 + 反事实预测）
-- 仓库内容：54 个文件（含 `.gitattributes` 统一 LF、`.gitignore`），零第三方依赖
+  - `d7ad57b` **参数标定页 + 可视化壳接入 v2**（六个可亲手做的实验、估计器、壳默认跑 v2 并显示诊断/处方）
+- 仓库内容：62 个文件（含 `.gitattributes` 统一 LF、`.gitignore`），零第三方依赖
+- 标定（用户可亲自做）：`viz/calibrate.html` —— T1 即刻广度→`W_DAR`；T2 经验取样→`duty/p_off/p_on/τ_vig`；
+  T3 学习+延迟回忆→`R0/S/legacy_k`；T4 再读 vs 主动回忆→`kappa_reread_ratio`；T5 自信校准→`b0/δ`；
+  T6 成本与目标→`cost_*`/目标留存。进度存 localStorage，一键保存到本机供扩散视图使用；
+  后续每道题的对错通过 `refineStability` 继续微调 `S`（协议见 `docs/CALIBRATION.md`）
 - 已实现（11 个机制模块、56 条验收断言）：
   - `src/core/` 机制内核（15 个槽位、不变量守卫、共享/命名空间状态、验收执行）
   - `src/v2/engine.js` 快层引擎（每轮管线 + 诊断事实表 + 克隆 + 控制层报告）
