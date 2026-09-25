@@ -643,6 +643,74 @@
       return round6(score);
     }
 
+    // ------------------------------------------- 与 v1.1 同名的兼容接口
+    // 可视化壳与 CLI 直接调用这几个名字；v2 用同一套语义实现，便于两种引擎切换对比。
+
+    /** 复习更新（v1.1 叫 update_memory）：review_type='focused' 映射为一次成功提取 */
+    update_memory(nodeId, options) {
+      const opts = options || {};
+      if (opts.review_type === 'focused') {
+        return this.kernel.review(nodeId, {
+          type: 'retrieval_success', grade: 3, current_real_time: opts.current_real_time,
+        });
+      }
+      if (opts.review_type === 'process') {
+        throw new MindNetError('过程访问复习在 v1.1 与 v2 都未实现（设计文档 §4.4）');
+      }
+      if (opts.type) return this.kernel.review(nodeId, opts);
+      throw new MindNetError(`未知的 review_type "${opts.review_type}"（可用：focused / process，或直接给 type）`);
+    }
+
+    /** 全局记忆更新：把现实时间推到 u，模块据此同步可提取度 */
+    update_global_memory(current_real_time) {
+      const before = this.kernel.hours;
+      this.kernel.setHours(current_real_time);
+      const facts = this.diagnostic_facts();
+      const updated = Object.keys(facts).map((id) => ({
+        id,
+        ms_before: null,
+        ms_after: facts[id].R,
+        elapsed_hours: current_real_time - before,
+      }));
+      return { current_real_time, updated, filled_missing: [] };
+    }
+
+    /** 逐节点 KC 明细（与 v1.1 的 kc_breakdown 同形，供壳直接渲染） */
+    kc_breakdown() {
+      const facts = this.diagnostic_facts();
+      const gap = [];
+      const penalty = [];
+      for (const node of this.graph.nodes.values()) {
+        if (this._starts.has(node.id)) continue;
+        const f = facts[node.id];
+        if (!f) continue;
+        if (f.ever_activated) {
+          const contribution = node.weight * Math.max(0, this.config.gap_constant * f.ct - f.peak_drive);
+          gap.push({
+            id: node.id,
+            name: node.name,
+            state: f.state,
+            weight: node.weight,
+            ct: f.ct,
+            impact: round6(f.peak_drive),
+            contribution: round6(contribution),
+          });
+        } else if (f.F > 0) {
+          const contribution = node.weight * Math.sqrt(f.F);
+          penalty.push({
+            id: node.id,
+            name: node.name,
+            weight: node.weight,
+            visit_count: Math.round(f.F),
+            contribution: round6(contribution),
+          });
+        }
+      }
+      gap.sort((a, b) => b.contribution - a.contribution);
+      penalty.sort((a, b) => b.contribution - a.contribution);
+      return { gap, penalty };
+    }
+
     // ---------------------------------------------------------- 只读视图
 
     get rounds() { return this._rounds; }

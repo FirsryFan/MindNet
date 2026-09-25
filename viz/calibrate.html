@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MindNet · 参数标定</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="calibrate.css">
+</head>
+<body>
+
+<header>
+  <h1>MindNet <span>参数标定</span></h1>
+  <span class="sub">做几个小实验，把模型参数换成你自己的 —— 不要求精准，跑起来之后再从做题反馈里修</span>
+  <span class="spacer"></span>
+  <span class="badge">已完成 <b id="done-count">0</b>/6</span>
+  <button id="btn-apply">保存参数（供扩散视图使用）</button>
+  <button id="btn-clear" class="danger">清空重来</button>
+</header>
+
+<main class="cal-layout">
+  <section class="cal-main">
+
+    <details class="task" id="task-t1">
+      <summary><span class="num">1</span><span class="tname">意识容量：一次能拿住几个</span><span class="meta">约 3 分钟 · 估 W_DAR</span></summary>
+      <div class="body">
+        <p class="hint">屏幕会依次闪现一串词（每个 1.2 秒），闪完后凭记忆把它们写出来（顺序不限、用空格或逗号分隔）。从 3 个测到 7 个。</p>
+        <div class="stage" id="t1-stage"><span class="hint">点「开始」后看屏幕中央。</span></div>
+        <div class="row">
+          <button id="t1-start" class="primary">开始第 <span id="t1-n">3</span> 个</button>
+          <span class="hint" id="t1-progress"></span>
+        </div>
+        <div class="row" id="t1-answer-row" style="display:none">
+          <input type="text" id="t1-answer" placeholder="写出你记住的词，空格分隔" style="flex:1">
+          <button id="t1-submit">提交</button>
+        </div>
+        <div class="result" id="t1-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <details class="task" id="task-t2">
+      <summary><span class="num">2</span><span class="tname">走神与专注：你在不在</span><span class="meta">3 分钟 · 估 duty / p_off / p_on / τ_vig</span></summary>
+      <div class="body">
+        <p class="hint">接下来 3 分钟，做你手头的任意一件事（看题、背单词都行）。<b>每次发现自己走神了，就点一下下面这个按钮。</b>
+          系统每 20 秒自动采样一次：这一段里点过 = 走神，没点 = 在。</p>
+        <div class="row">
+          <button id="t2-start" class="primary big-btn">开始 3 分钟</button>
+          <button id="t2-off" class="big-btn" disabled>我又走神了（点一下）</button>
+          <span id="t2-clock" class="pill">未开始</span>
+        </div>
+        <div class="stage" id="t2-stage"><span class="hint">采样记录会显示在这里。</span></div>
+        <div class="result" id="t2-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <details class="task" id="task-t3">
+      <summary><span class="num">3</span><span class="tname">遗忘速度：学一遍 → 过几小时再想</span><span class="meta">两次 · 估 R0 与 S</span></summary>
+      <div class="body">
+        <p class="hint">先学 8 个词（每个看 3 秒），立刻回忆一次（得到 R0）；<b>过几小时后再回来</b>做一次同样的回忆（得到 Rt）。
+          两次数据一起就能解出你的记忆稳定度 S。</p>
+        <div class="row">
+          <label>要学的词（可改成你正在背的）</label>
+        </div>
+        <div class="row"><input type="text" id="t3-words" style="flex:1" value="苹果 钥匙 河流 灯塔 铅笔 森林 窗户 吉他"></div>
+        <div class="stage" id="t3-stage"><span class="hint">点「开始学习」。</span></div>
+        <div class="row">
+          <button id="t3-learn" class="primary">开始学习</button>
+          <button id="t3-test-now" disabled>立即回忆（R0）</button>
+          <button id="t3-test-later" disabled>延迟回忆（Rt）</button>
+          <span class="pill" id="t3-clock">—</span>
+        </div>
+        <div class="row" id="t3-answer-row" style="display:none">
+          <input type="text" id="t3-answer" placeholder="写出你记得的词，空格分隔" style="flex:1">
+          <button id="t3-submit">提交</button>
+        </div>
+        <div class="result" id="t3-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <details class="task" id="task-t4">
+      <summary><span class="num">4</span><span class="tname">再读 vs 主动回忆</span><span class="meta">两次 · 估 κ_reread_ratio</span></summary>
+      <div class="body">
+        <p class="hint">两组各 5 个词：A 组「再读一遍」，B 组「合上材料主动回忆」。<b>第二天</b>再分别回忆两组，比较留存。
+          差的这一截就是「提取练习」的增益。</p>
+        <div class="row"><input type="text" id="t4-words" style="flex:1" value="面包 轮胎 草原 螺丝 茶杯 地图 钟表 竹子 灯塔 钥匙"></div>
+        <div class="stage" id="t4-stage"><span class="hint">点「开始两组学习」。</span></div>
+        <div class="row">
+          <button id="t4-learn" class="primary">开始两组学习</button>
+          <button id="t4-test" disabled>第二天：测试两组</button>
+          <span class="pill" id="t4-clock">—</span>
+        </div>
+        <div class="row" id="t4-answer-row" style="display:none">
+          <label>A 组（再读）记得几个</label><input type="number" id="t4-a" min="0" max="5" value="0" style="width:70px">
+          <label>B 组（主动回忆）记得几个</label><input type="number" id="t4-b" min="0" max="5" value="0" style="width:70px">
+          <button id="t4-submit">提交</button>
+        </div>
+        <div class="result" id="t4-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <details class="task" id="task-t5">
+      <summary><span class="num">5</span><span class="tname">自信校准：你以为你会吗</span><span class="meta">约 5 分钟 · 估 b0 与 δ</span></summary>
+      <div class="body">
+        <p class="hint">对 12 个词，每个先凭第一感觉给「如果现在考我这个，我能想起来的把握」打 0–100 分，
+          然后立刻自评「刚才真的想起来了吗」。系统同时记录你的反应时间（作为"流畅度"的代理）。</p>
+        <div class="row"><button id="t5-start" class="primary">开始 12 项</button><span class="pill" id="t5-progress">0/12</span></div>
+        <div class="stage" id="t5-stage"><span class="hint">点「开始」。</span></div>
+        <div class="row" id="t5-belief-row" style="display:none">
+          <label>把握</label>
+          <input type="range" id="t5-belief" class="slider" min="0" max="100" value="50">
+          <span id="t5-belief-val" style="width:40px">50</span>
+          <button id="t5-next">下一项</button>
+        </div>
+        <div class="row" id="t5-recall-row" style="display:none">
+          <span class="hint">刚才那个词，你真的想起来了吗？</span>
+          <button id="t5-yes">想起来了</button>
+          <button id="t5-no">没想起来</button>
+        </div>
+        <div class="result" id="t5-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <details class="task" id="task-t6">
+      <summary><span class="num">6</span><span class="tname">成本与目标：你愿意花多少</span><span class="meta">1 分钟 · 估 cost_* 与目标留存</span></summary>
+      <div class="body">
+        <p class="hint">1 = 很轻松，5 = 很费劲。这些数字决定处方怎么排序（性价比高的排前面）。</p>
+        <div class="selfcheck-row"><label>主动回忆一次</label><input type="range" id="t6-retrieval" class="slider" min="1" max="5" value="3"><span id="t6-retrieval-v">3</span><span class="hint">基准</span></div>
+        <div class="selfcheck-row"><label>补一条新连接</label><input type="range" id="t6-link" class="slider" min="1" max="5" value="4"><span id="t6-link-v">4</span><span class="hint"></span></div>
+        <div class="selfcheck-row"><label>写下来释放脑子</label><input type="range" id="t6-offload" class="slider" min="1" max="5" value="1"><span id="t6-offload-v">1</span><span class="hint"></span></div>
+        <div class="row">
+          <label>你希望考试时记得多牢</label>
+          <select id="t6-target">
+            <option value="0.7">70%（省时间，掉得快）</option>
+            <option value="0.8">80%</option>
+            <option value="0.85" selected>85%（推荐，Wilson 85% 规则的落点）</option>
+            <option value="0.9">90%（很稳，但复习次数多）</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>你平时做题的正确率大概</label>
+          <input type="number" id="t6-acc" min="0" max="100" value="70" style="width:80px"> %
+          <span class="hint" id="t6-acc-hint"></span>
+        </div>
+        <div class="row"><button id="t6-submit" class="primary">保存这一项</button></div>
+        <div class="result" id="t6-result" style="display:none"></div>
+      </div>
+    </details>
+
+    <div class="card">
+      <h2>反馈闭环 <small>标定只是起点</small></h2>
+      <p class="hint">这些数字不追求精准。真正的修正在后面：每做一道题（答对/答错 + 距上次复习多久）都是一条证据，
+        系统用同一条公式微调稳定度 —— 这就是 <code>refineStability(S, {tHours, correct})</code>。
+        也就是说：<b>你只要照常用，模型会自己往你的真实记忆曲线上靠。</b></p>
+      <div class="row">
+        <label>演示：当前 S</label><input type="number" id="refine-s" value="24" style="width:90px">
+        <label>距上次复习</label><input type="number" id="refine-t" value="48" style="width:90px"> 小时
+        <button id="refine-yes">答对</button>
+        <button id="refine-no">答错</button>
+        <span id="refine-out" class="hint"></span>
+      </div>
+    </div>
+
+  </section>
+
+  <aside class="cal-side">
+    <div class="card">
+      <h2>参数估计 <small>默认值 → 你的值</small></h2>
+      <table class="param-table">
+        <thead><tr><th>参数</th><th>默认</th><th>你的</th><th>来自</th></tr></thead>
+        <tbody id="param-body"></tbody>
+      </table>
+      <div class="msg" id="cal-msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>这对你意味着什么</h2>
+      <ul class="effects" id="effects"><li class="hint">做完实验后这里会用人话解释。</li></ul>
+    </div>
+
+    <div class="card">
+      <h2>导出的参数覆盖</h2>
+      <p class="hint">把这段 JSON 贴给引擎（或点「保存参数」让扩散视图用上）。</p>
+      <textarea id="overrides" class="overrides" readonly></textarea>
+      <div class="row">
+        <button id="btn-copy">复制</button>
+        <a id="download-link" style="display:none"><button>下载 JSON</button></a>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script src="../src/config.js"></script>
+<script src="../src/model.js"></script>
+<script src="../src/core/rng.js"></script>
+<script src="../src/core/kernel.js"></script>
+<script src="../src/calibration.js"></script>
+<script src="../mechanisms/memory.dsr.js"></script>
+<script src="../mechanisms/metacognition.belief.js"></script>
+<script src="../mechanisms/attention.capacity.js"></script>
+<script src="../mechanisms/attention.ignition.js"></script>
+<script src="../mechanisms/rhythm.gate.js"></script>
+<script src="../mechanisms/control.planner.js"></script>
+<script src="calibrate.js"></script>
+</body>
+</html>

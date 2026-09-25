@@ -67,6 +67,12 @@
     jsonOutput: $('json-output'),
     downloadLink: $('download-link'),
     nodeTable: $('node-table'),
+    engineSel: $('engine'),
+    v2Card: $('v2-card'),
+    v2Meta: $('v2-meta'),
+    v2Danger: $('v2-danger'),
+    v2Diagnosis: $('v2-diagnosis'),
+    v2Plan: $('v2-plan'),
   };
 
   const ui = {
@@ -86,6 +92,9 @@
     flashTimer: null,
     now: M.now_hours(),
     downloadUrl: null,
+    engineKind: 'v2',
+    overrides: {},
+    seed: 7,
   };
 
   // ------------------------------------------------------------------ 工具
@@ -147,6 +156,55 @@
     return pos;
   }
 
+  // ------------------------------------------------------------ 引擎装配
+
+  const OVERRIDE_KEY = 'mindnet.overrides';
+
+  /** 读取标定页保存的参数覆盖（没有就返回空对象） */
+  function loadOverrides() {
+    try {
+      const raw = globalThis.localStorage && localStorage.getItem(OVERRIDE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  /** 当前选的引擎：'v1'（旧语义基线）或 'v2'（记忆层 + 快层 + 控制层） */
+  function currentEngineKind() {
+    return el.engineSel ? el.engineSel.value : 'v2';
+  }
+
+  /**
+   * 建引擎。v2 走内核 + 机制模块（模块清单由 viz/build_mechanisms.js 生成）。
+   * 没有清单或没加载到模块时，退回 v1.1 并在界面上说清楚。
+   */
+  function buildModel(graph) {
+    const kind = currentEngineKind();
+    if (kind === 'v2' && M.FastEngine && M.MechanismKernel && globalThis.MindNetMechanisms) {
+      const manifest = globalThis.MindNetMechanisms;
+      const overrides = loadOverrides();
+      const kernel = new M.MechanismKernel(graph, ui.config, { seed: ui.seed, hours: ui.now, overrides });
+      const ids = manifest.profiles.v2 || [];
+      const modules = ids
+        .map((id) => {
+          const holder = M[manifest.globals[id]];
+          return holder && holder.manifest;
+        })
+        .filter(Boolean);
+      if (modules.length !== ids.length) {
+        setMsg('v2 模块没加载全：请先在命令行跑一次 node viz/build_mechanisms.js 并刷新', true);
+        return new M.CognitiveModel(graph, ui.config);
+      }
+      kernel.load(modules);
+      ui.engineKind = 'v2';
+      ui.overrides = overrides;
+      return new M.FastEngine(graph, ui.config, { kernel, seed: ui.seed, hours: ui.now, profile: 'v2', overrides });
+    }
+    ui.engineKind = 'v1';
+    return new M.CognitiveModel(graph, ui.config);
+  }
+
   function loadInput(input) {
     stopPlaying();
     let graph;
@@ -158,7 +216,7 @@
     }
     ui.input = input;
     ui.graph = graph;
-    ui.model = new M.CognitiveModel(graph, ui.config);
+    ui.model = buildModel(graph);
     ui.starts = new Set(Array.isArray(input.initial_nodes) ? input.initial_nodes : []);
     ui.targets = new Set(Array.isArray(input.target_nodes) ? input.target_nodes : []);
     ui.pos = circularLayout(graph);
@@ -352,6 +410,49 @@
     renderNodeTable();
     renderNodeDetail();
     renderCurve();
+    renderV2Panels();
+  }
+
+  /** v2 控制层面板：元认知危险区 / 卡点诊断 / 今日处方 */
+  function renderV2Panels() {
+    if (!el.v2Card) return;
+    if (ui.engineKind !== 'v2' || !ui.model.control_report) {
+      el.v2Card.style.display = 'none';
+      return;
+    }
+    el.v2Card.style.display = '';
+    let report;
+    try {
+      report = ui.model.control_report();
+    } catch (err) {
+      el.v2Meta.textContent = `控制层报错：${err.message}`;
+      return;
+    }
+    const nOver = Object.keys(ui.overrides || {}).length;
+    el.v2Meta.textContent = `引擎 v2 · 已应用 ${nOver} 个标定参数`
+      + (report.metacognition ? ` · 校准度 ${report.metacognition.calibration}` : '');
+
+    el.v2Danger.textContent = '';
+    const danger = (report.metacognition && report.metacognition.danger) || [];
+    if (!danger.length) el.v2Danger.appendChild(row(['（无）'], null));
+    for (const d of danger) {
+      el.v2Danger.appendChild(row([d.name, `自信 ${d.belief}`, `实际 ${d.R}`, `+${d.diff}`], d.node));
+    }
+
+    el.v2Diagnosis.textContent = '';
+    if (!report.diagnosis.length) el.v2Diagnosis.appendChild(row(['（无）'], null));
+    for (const b of report.diagnosis.slice(0, 6)) {
+      el.v2Diagnosis.appendChild(row([b.name, b.label, b.note], b.node));
+    }
+
+    el.v2Plan.textContent = '';
+    if (!report.plan.length) el.v2Plan.appendChild(row(['（无）'], null));
+    for (const p of report.plan.slice(0, 6)) {
+      const gain = p.simulated
+        ? `${p.gain >= 0 ? '+' : ''}${p.gain}（${p.metric === 'retention' ? '留存' : '可达性'}）`
+        : '未模拟';
+      el.v2Plan.appendChild(row([p.name, p.instruction_name || p.instruction, gain], p.node));
+    }
   }
 
   function renderBreakdown(breakdown) {
@@ -465,6 +566,15 @@
     const k = ui.config.forgetting_k;
     const elapsed = node && node.last_review_time ? Math.max(0, ui.now - node.last_review_time) : null;
 
+    // v2：曲线由记忆模块的状态决定（R0 与 S），不再是固定形状的指数
+    const memState = ui.engineKind === 'v2' && node && node.m && node.m.memory_dsr ? node.m.memory_dsr : null;
+    const curveAt = (t) => {
+      if (memState && M.memoryDsr && M.memoryDsr.psi) {
+        return memState.R0 * M.memoryDsr.psi(t / memState.S, { decay_model: 'power', gamma: 0.1542 });
+      }
+      return M.apply_forgetting(ms0, t, ui.config);
+    };
+
     ctx.strokeStyle = '#26313d';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -491,7 +601,7 @@
     ctx.beginPath();
     for (let px = 0; px <= plotW; px += 1) {
       const t = (px / plotW) * CURVE_HOURS;
-      const ms = M.apply_forgetting(ms0, t, ui.config);
+      const ms = curveAt(t);
       const x = pad.l + px;
       const y = yOf(ms);
       if (px === 0) ctx.moveTo(x, y);
@@ -501,16 +611,19 @@
 
     if (elapsed !== null) {
       const t = Math.min(elapsed, CURVE_HOURS);
-      const ms = M.apply_forgetting(ms0, elapsed, ui.config);
+      const ms = curveAt(elapsed);
       ctx.fillStyle = '#ffc53d';
       ctx.beginPath();
       ctx.arc(xOf(t), yOf(ms), 4, 0, Math.PI * 2);
       ctx.fill();
-      el.curveCaption.textContent =
-        `选中节点 ms0=${round4(ms0)}，已过 ${round4(elapsed)} 小时 → 现在 ms=${round4(ms)}` +
-        (elapsed > CURVE_HOURS ? '（点画在 7 天处）' : '');
+      el.curveCaption.textContent = memState
+        ? `选中节点 R0=${round4(memState.R0)}，S=${round4(memState.S)} 小时（n=${memState.N}），已过 ${round4(elapsed)} 小时 → 现在 R=${round4(ms)}`
+        : `选中节点 ms0=${round4(ms0)}，已过 ${round4(elapsed)} 小时 → 现在 ms=${round4(ms)}`
+          + (elapsed > CURVE_HOURS ? '（点画在 7 天处）' : '');
     } else {
-      el.curveCaption.textContent = `未选中节点时按 ms0=${ms0} 画曲线；k=${k}，S=k×ms0`;
+      el.curveCaption.textContent = memState
+        ? `v2 记忆曲线：R = R0·(1+c·t/S)^(−0.1542)，R0=${round4(memState.R0)}，S=${round4(memState.S)} 小时`
+        : `未选中节点时按 ms0=${ms0} 画曲线；k=${k}，S=k×ms0`;
     }
 
     ctx.fillStyle = '#8797a8';
@@ -689,7 +802,10 @@
     }
     ui.model.update_memory(ui.selected, { review_type: 'focused', current_real_time: ui.now });
     updateAll();
-    el.memoryMsg.textContent = `${ui.selected}：专注复习 → ms = 1.0`;
+    const mem = ui.graph.get_node(ui.selected).m && ui.graph.get_node(ui.selected).m.memory_dsr;
+    el.memoryMsg.textContent = mem
+      ? `${ui.selected}：一次成功提取 → R0 ${mem.R0.toFixed(2)}，S ${mem.S.toFixed(1)} 小时`
+      : `${ui.selected}：专注复习 → ms = 1.0`;
   }
 
   function setHoursAgo() {
@@ -704,6 +820,8 @@
     }
     const node = ui.graph.get_node(ui.selected);
     node.last_review_time = ui.now - hours;
+    // v2 的权威字段在记忆模块的命名空间里，两边都要写，否则模型读的是旧值
+    if (node.m && node.m.memory_dsr) node.m.memory_dsr.lastReview = ui.now - hours;
     updateAll();
     el.memoryMsg.textContent = `${node.id}：上次复习时间设为 ${hours} 小时前`;
   }
@@ -712,9 +830,15 @@
     if (!ui.model) return;
     const report = ui.model.update_global_memory(ui.now);
     updateAll();
+    const changed = (report.updated || []).length;
+    const filled = (report.filled_missing || []).length;
+    if (ui.engineKind === 'v2') {
+      el.memoryMsg.textContent = `按你的参数把 ${changed} 个节点的可提取度同步到 ${round4(ui.now)} 小时`;
+      return;
+    }
     el.memoryMsg.textContent =
-      `衰减 ${report.updated.length} 个节点，补时间 ${report.filled_missing.length} 个` +
-      (report.updated.length
+      `衰减 ${changed} 个节点，补时间 ${filled} 个` +
+      (changed
         ? `（${report.updated.map((u) => `${u.id}: ${round4(u.ms_before)}→${round4(u.ms_after)}`).join('，')}）`
         : '');
   }
@@ -857,6 +981,15 @@
     el.btnLoadSample.addEventListener('click', loadSample);
     el.btnLoadJson.addEventListener('click', loadFromTextarea);
     el.btnExport.addEventListener('click', exportState);
+    if (el.engineSel) {
+      el.engineSel.addEventListener('change', () => {
+        if (!ui.input) return;
+        stopPlaying();
+        if (loadInput(ui.input)) {
+          setMsg(`已切换到 ${el.engineSel.value === 'v2' ? 'v2（记忆层 + 快层 + 控制层）' : 'v1.1（旧语义基线）'}，请重新「开始扩散」`);
+        }
+      });
+    }
     el.speed.addEventListener('change', () => {
       if (ui.playing) {
         stopPlaying();

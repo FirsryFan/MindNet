@@ -1,6 +1,6 @@
 /**
  * 本文件由 viz/build_samples.js 自动生成，请勿手改。
- * 数据来源：mindnet/example/*.json —— 生成时间 2026-09-19T13:28:10.329Z
+ * 数据来源：mindnet/example/*.json —— 生成时间 2026-09-25T02:27:13.829Z
  */
 (function () {
   'use strict';

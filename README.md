@@ -63,9 +63,10 @@ console.log(result.kc, result.target_steps, result.final_states);
 
 ```
 mindnet/
-├─ docs/                    设计文档（五份）
+├─ docs/                    设计文档（六份）
 │  ├─ DESIGN_v1.1.md        v1.1 定稿（旧语义基线）
 │  ├─ MODEL_v2_MATH.md      **v2 数学模型完整规范**：状态空间、全部方程、参数表、可证伪预测、假设登记
+│  ├─ CALIBRATION.md        **标定协议**：六个实验怎么做、估什么参数、精度边界、反馈闭环
 │  ├─ DESIGN_v2_PROPOSAL.md v2 提案：脑/学生模仿、九处机制缺口、三层架构、验收标准
 │  ├─ PLUGIN_ARCHITECTURE.md 机制插件化：槽位、模块 manifest、不变量守卫、AI 插入流程
 │  └─ MECHANISM_CATALOG.md  机制目录：8 层 50+ 条候选机制（带文献依据 / 数学形式 / 优先级）
@@ -77,7 +78,8 @@ mindnet/
 │  ├─ model.js              §3 Node / Edge / Graph（加载与校验）
 │  ├─ memory.js             v1.1 的遗忘曲线 / 全局记忆更新 / 专注复习
 │  ├─ diffusion.js          v1.1 扩散引擎 + KC + 输出协议
-│  └─ index.js              Node 侧统一入口（createKernel / listMechanisms / memoryDsr）
+│  ├─ calibration.js        **参数标定估计器**：全部闭式解，Node 与浏览器共用
+│  └─ index.js              Node 侧统一入口（createKernel / listMechanisms / memoryDsr / FastEngine）
 ├─ mechanisms/              机制模块（一个文件一个机制；可增删）
 │  ├─ index.js              注册表：扫描 + 校验清单 + 配置档（v2 / memory / legacy / extras）
 │  ├─ memory.dsr.js         **v1.2 记忆层**：R0/S/Σ、三档复习、失败证据老化、排程反解
@@ -99,10 +101,14 @@ mindnet/
 │  └─ model_math_check.js   v2 数学自检：常数、单调性、容量、退化等价（`npm run math`）
 ├─ cli.js                   命令行外壳
 ├─ viz/                     可视化壳（HTML + CSS + 原生 JS，无框架）
-│  ├─ index.html            双击即用
+│  ├─ index.html            双击即用（顶部可切 v1.1 / v2 引擎）
+│  ├─ calibrate.html        **参数标定页**：六个实验，做完导出你自己的参数
 │  ├─ app.js  styles.css    界面逻辑与样式
+│  ├─ calibrate.js  calibrate.css  标定页逻辑与样式
 │  ├─ sample_graph.js       由 example/*.json 生成（勿手改）
-│  └─ build_samples.js      重新生成上面那个文件
+│  ├─ mechanism_manifest.js 由 mechanisms/ 生成（勿手改）
+│  ├─ build_samples.js      重新生成示例数据
+│  └─ build_mechanisms.js   重新生成机制清单（改过机制模块后要重跑）
 ├─ example/
 │  ├─ graph.json            设计文档 §8.1 的两节点示例
 │  └─ demo_learning.json    10 节点演示图（含一个死角节点）
@@ -110,9 +116,14 @@ mindnet/
 └─ package.json
 ```
 
-> **当前进度**：内核 + 插件架构 + **v1.2 记忆层** + **v1.3 快层** + **v2.0 控制层**已实现。
+> **当前进度**：内核 + 插件架构 + **v1.2 记忆层** + **v1.3 快层** + **v2.0 控制层** + **参数标定页**已实现。
 > v1.1 的旧语义**原样保留**在 `src/`（`CognitiveModel`），旧测试全部继续通过；
 > v2 走 `src/v2/engine.js` + `mechanisms/`，通过配置档（profile）切换，二者可在同一张图上做对照实验。
+> **可视化壳默认已切到 v2**（顶部可切回 v1.1 对照），右侧会显示元认知危险区、卡点诊断与今日处方。
+
+**先做标定，再用它**：双击 `viz/calibrate.html` → 六个小实验（T3/T4 要过几小时回来做第二次）
+→ 点「保存参数」→ 打开 `viz/index.html`，模型就用上你自己的量级了。
+协议与精度边界见 `docs/CALIBRATION.md`；后续每道题的对错会继续微调 `S`（`refineStability`）。
 
 **v2 怎么用（五行）**
 
@@ -227,16 +238,17 @@ memoryDsr.scheduleInterval(graph.get_node('solve_triangle'), 0, 0.85);  // → �
 
 | 命令 | 结果 |
 |---|---|
-| `npm test` | **68 / 68 通过**（41 项 v1.1 旧语义 + 27 项新增：内核契约、v1.2 记忆层、v1.3 快层与差分等价） |
-| `npm run mechanisms -- --check` | **8 个模块**：schema 通过、静态扫描 0 项违规、验收断言 **46 条全部通过** |
+| `npm test` | **88 / 88 通过**（41 项 v1.1 旧语义 + 47 项新增：内核契约、v1.2 记忆层、v1.3 快层与差分等价、v2.0 控制层、标定估计器） |
+| `npm run mechanisms -- --check` | **11 个模块**：schema 通过、静态扫描 0 项违规、验收断言 **56 条全部通过** |
 | `npm run probe` | v1.1 体检：五条学习规律全部答不上（这是 v2 的立项依据） |
 | `npm run probe:v2` | v2 对照：**规律 1–5 全部翻转**（含容量 201→进入意识 2 / 在脑子里 10，距离衰减 0.81 恒定 → 0.983→0.194） |
+| `npm run control` | 控制层报告：`polar` 判为「线索太弱（峰值仅阈值的 2%）」→ 处方「增加入边 trig_func → polar」，预测可达性 0.589 → 1.295 |
 | `npm run math` | 数学自检 7 组全过（含 `t∈[0,200]h` 上 v1.1 与 v2 指数模式**最大差 = 0**） |
 | **差分等价**（`test/v2_fast.test.js`） | `FastEngine + legacy_v1` 在链 / 菱形 / 扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`，目标步数一致 |
 | `node cli.js example/graph.json --json` | 输出与文档 §8.2 逐字段一致 |
 | `node cli.js example/demo_learning.json` | `gap = 0.096`、`penalty = 0.4`、5 轮冷却停止、`polar` 死角 `visit = 1` |
-| Edge 无头浏览器打开 `viz/index.html` | 10 个 SVG 节点 / 11 条边 / 表格全部渲染，消息「已载入：10 个节点 / 11 条边」，无脚本报错 |
-| Edge 无头浏览器打开 `viz/index.html?selfcheck=1` | `SELFCHECK_OK`：角色设置 → 开始 → 单步 → 追加起点（`coordinate` 下一轮生效）→ 跑到底 → 专注复习 → 设为 10 小时前 → 全局记忆更新（`polar: 0.15 → 0.0093`）→ 导出 4432 字节状态；`transforms_ok=true`、`class_mismatch=0` |
+| Edge 无头浏览器打开 `viz/index.html?selfcheck=1`（**v2 引擎**） | `SELFCHECK_OK`：10 节点 11 边全渲染；`rounds=8`、`solve_triangle=第3轮 / polar=第8轮`、状态分布 4/1/5、遗忘曲线显示 v2 记忆状态（`R0=0.15, S=3.6h`）、`json_output_len=23620` |
+| Edge 无头浏览器打开 `viz/calibrate.html?selfcheck=1` | `CALIBRATE_OK`：参数表 11 行、实验 6 个、估计器端到端可用（容量/节律/稳定度都算出数）、`localStorage_ok=true` |
 
 测试文件：`test/memory.test.js`（v1.1 遗忘曲线、复习、配置）、`test/diffusion.test.js`（v1.1 状态判定、永久亮着、多起点、追加、冷却、最大轮次、目标）、`test/kc.test.js`（v1.1 Gap / Penalty）、`test/graph.test.js`（加载与校验、严格有向）、`test/shell.test.js`（壳结构与 CLI）、`test/kernel.test.js`（**插件内核**：清单校验、依赖排序、错误隔离、不变量守卫、确定性、参数解析）、`test/v2_memory.test.js`（**v1.2 记忆层**：规律 1/5 翻转、提取练习效应、储蓄效应、排程反解、退化等价、难度调整）、`test/v2_fast.test.js`（**v1.3 快层**：规律 2/3/4 翻转、概率点火可复现、节律门控、负荷自适应节拍、**与 v1.1 的差分等价**、协议与确定性）。
 

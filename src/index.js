@@ -61,5 +61,7 @@ module.exports = Object.assign(
   diffusion,
   core,
   rng,
+  // v2 快层引擎也挂在统一入口上（浏览器壳按 profile 装配内核时要用到）
+  require('./v2/engine.js'),
   { createKernel, listMechanisms, loadMechanisms: registry.loadMechanisms, memoryDsr }
 );
