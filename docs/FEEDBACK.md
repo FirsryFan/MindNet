@@ -106,6 +106,9 @@ n 条证据之后  log S 的标准误 ≥ 1/√(n·I)
 
 ## 4 三种用法
 
+> **先记住分工**：每条线索的 `S` 由**机制**（`mechanisms/memory.dsr.js`）维护 —— 那是模型的物理。
+> 本模块**不改任何节点的 S**，它只做体检与参数建议（`docs/IO_PROTOCOL.md` §6 的定案）。
+
 ### 4.1 可视化壳（主要入口）
 
 打开 `viz/index.html` → 右侧 **「反馈」** 卡片：
@@ -114,12 +117,14 @@ n 条证据之后  log S 的标准误 ≥ 1/√(n·I)
 2. 「距上次复习」会自动填成 `现在 − 上次复习`，也可以手改；
 3. 点 **「答对了」/「答错了」** —— 立刻看到：
    - 模型考前的预测留存 `p`（这就是它当时的把握）；
-   - `S` 的前后对比、位移百分比、这条证据的权重与本次增益；
-   - **下一次复习时间**变成什么时候（按 `calibration.target_retention`，默认 0.85）；
-   - 「把修正写回图」默认自动勾选：写回后引擎的排程、遗忘曲线、控制层诊断全部用新的 `S`。
+   - 账本估计 `S` 的位移百分比、这条证据的权重与增益；
+   - **机制算的 `S` vs 体检估的 `S`** 并排（表格两列）+ 偏差倍数；
+   - **下一次复习时间**（按机制那个 `S` 与 `calibration.target_retention` 算，默认 0.85）。
 
 记录存在 `localStorage['mindnet.feedback.v1']`，可以「撤销上一条」（账本会从起点回放重算）。
-面板底部始终显示：共几条证据、正确率、以及 **`S` 的误差下界**。
+面板底部始终显示：共几条证据、正确率、`S` 的误差下界。
+证据够多时，点 **「把体检结论写成参数」** 会把建议（例如 `memory.dsr.legacy_k`）写进
+`localStorage['mindnet.overrides']`，刷新后引擎按新参数装配。
 
 > 口径提醒：如果目标留存（例如 0.85）**高于**这条线索的编码上限 `R0`（例如 0.8），
 > 排程公式会返回间隔 0 —— 面板会把原因写出来，而不是静默显示 0。
@@ -131,13 +136,14 @@ node tools/feedback.js init    .tmp/led.json example/demo_learning.json   # 先�
 node tools/feedback.js add     .tmp/led.json --node polar --hours 48 --wrong
 node tools/feedback.js add     .tmp/led.json --node polar --hours 20 --correct
 node tools/feedback.js report  .tmp/led.json
-node tools/feedback.js suggest .tmp/led.json                              # 新节点的初始 k 建议
-node tools/feedback.js apply   .tmp/led.json example/demo_learning.json -o graph_fb.json
+node tools/feedback.js compare .tmp/led.json example/demo_learning.json   # 体检：机制 S vs 账本估计
+node tools/feedback.js params  .tmp/led.json -o overrides.json            # 只给参数建议
 node tools/feedback.js demo    --events 400                               # 看收敛/不漂移
 ```
 
-`apply` 写出的图 JSON **可以原样再载回来**（`m` 里的记忆状态会随图一起往返，
-见 §5），所以「做题 → 修 `S` → 存档 → 下次接着用」是一条闭合的链路。
+`compare` 是日常最常用的那条：它把"模型算的 `S`"和"用你的对错估出来的 `S`"摆在一起，
+告诉你模型偏乐观还是偏保守、现在还差多少证据。`params` 给出的 overrides
+可以直接喂给 `createKernel(graph, config, { overrides })`。
 
 ### 4.3 代码里
 
@@ -146,7 +152,8 @@ const { FeedbackLog } = require('./src/feedback.js');
 const log = new FeedbackLog();
 log.harvest(graph);                               // 起点 = 图里现有的记忆状态
 log.record({ node: 'polar', tHours: 48, correct: false });
-log.applyToGraph(graph);                          // 引擎后续排程就用新的 S
+log.compareWithGraph(graph);                      // 体检：机制 S vs 账本估计 + 偏差读数
+log.suggestOverrides();                           // 唯一的"写"出口：参数建议（不碰 S）
 log.report();                                     // 逐节点统计 + 误差下界 + 全局 k 建议
 ```
 
@@ -157,26 +164,29 @@ log.report();                                     // 逐节点统计 + 误差下
 | 接口 | 说明 |
 |---|---|
 | `memory.dsr` 的曲线 | `predictedRetrievability` 直接调用 `memoryDsr.psi` 与它的默认参数（`gamma` 等），**不另造一条曲线**；参数不全时显式报错，绝不静默返回 0 |
-| 排程 | 修正后的 `S` 交给 `memoryDsr.scheduleInterval(node, now, target)`，间隔随之变化 |
-| 全局 `k` | `suggestLegacyK()` 取各节点 `S/R0` 的**中位数**（≥3 个节点才算数），用于给新节点定初值 |
+| `S` 的归属 | **机制独占**（复习事件里的 `SInc` / 遗忘后公式）。本模块只观测与建议，因此同一事件不会被两条规则记账 |
+| 排程 | 排程始终用机制那个 `S`：`memoryDsr.scheduleInterval(node, now, target)` |
+| 全局 `k` | `suggestLegacyK()` 取各节点 `S/R0` 的**中位数**（≥3 个节点才算数）；`suggestOverrides()` 把它包成 overrides |
 | 存档往返 | `Node.from_object` / `to_object` 会带上机制命名空间 `m`，`Graph.from_object` 也接受 `{id: 节点}` 映射形态，所以 `state()` 导出的存档能原样载回（含起点/目标） |
-| 标定 | `calibration.refineStability` 只是本模块的兼容别名，规则只有这一份 |
-| 反事实规划 | 修好的 `S` 就是 `docs/MODEL_v2_MATH.md` §7.2 规划器的输入；反馈越久，处方越贴你 |
+| 标定 | `calibration.refineStability` 只是本模块的兼容别名（估计用），不写状态 |
+| I/O 层 | 上游送来的 `review` 观察由 `src/io/run.js` 走机制路径；本模块的账本可以从 I/O 的 `applied[].delta` 直接喂（那条 delta 就是机制的返回） |
+| 反事实规划 | 机制维护的 `S` 就是 `docs/MODEL_v2_MATH.md` §7.2 规划器的输入 |
 
 ---
 
 ## 6 复现与自检
 
 ```powershell
-npm test                                   # 109 项（其中反馈 11 项 + 反馈 CLI 6 项）
+npm test                                   # 122 项（其中反馈 11 项 + 反馈 CLI 6 项 + I/O 13 项）
 node tools/feedback.js demo --events 400   # 收敛/无偏的信息论验证
+node tools/feedback.js compare <账本> <图>  # 体检：机制 S vs 账本估计
 node tools/mechanisms.js --check           # 机制契约不受影响
 ```
 
 可视化壳与标定页都自带自检：
 
 - `viz/index.html?selfcheck=1` → 页面底部 `<pre id="selfcheck">`，其中 `fb_*` 行是一次真实的
-  "记一条错题 → S 下降 → 写回图"；
+  "记一条错题 → 账本估计下降 → 面板并排显示机制/体检两个值"；
 - `viz/calibrate.html?selfcheck=1` → 报告里含 `tier_core/tier_optional`（必做 3 / 选做 3）
   与一次真实的反馈演示（`refine_out`）。
 

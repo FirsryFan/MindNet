@@ -3,12 +3,15 @@
  * 反馈工具：把「做过的每道题」变成对稳定度 S 的修正（对应 docs/FEEDBACK.md）
  *
  * 用法：
- *   node tools/feedback.js init   <账本.json> [图.json]      # 从图里取每条线索的真实起点（推荐先做这一步）
- *   node tools/feedback.js add    <账本.json> --node <节点> --hours <小时> --correct|--wrong [--at <ms>] [--r0 <0-1>]
- *   node tools/feedback.js report <账本.json>
+ *   node tools/feedback.js init    <账本.json> [图.json]      # 从图里取每条线索的真实起点（推荐先做这一步）
+ *   node tools/feedback.js add     <账本.json> --node <节点> --hours <小时> --correct|--wrong [--at <ms>] [--r0 <0-1>]
+ *   node tools/feedback.js report  <账本.json>
+ *   node tools/feedback.js compare <账本.json> <图.json>      # 体检：账本估计 vs 机制算出的 S
  *   node tools/feedback.js suggest <账本.json>
- *   node tools/feedback.js apply  <账本.json> <图.json> [-o 输出.json]
- *   node tools/feedback.js demo   [--events 400]        # 用模拟学生验证"收敛/不漂移"
+ *   node tools/feedback.js params  <账本.json> [-o overrides.json]   # 只调参数，不改 S
+ *   node tools/feedback.js demo    [--events 400]             # 用模拟学生验证"收敛/不漂移"
+ *
+ * 分工（见 docs/IO_PROTOCOL.md §6）：S 由机制（memory.dsr）改，本工具只做体检与参数建议。
  *
  * 说明：
  *   - 账本 = 每条线索的 S 起点（origin）+ 之后的全部证据，所以随时可回放重算；
@@ -164,37 +167,52 @@ function cmdSuggest(args) {
 
 function cmdApply(args) {
   const file = args._[1];
-  const graphFile = args._[2];
-  if (!file || !graphFile) throw new Error('apply 需要 <账本.json> 与 <图.json> 两个路径');
+  if (!file) throw new Error('params 需要账本文件路径');
   const log = loadLedger(file);
-  const raw = JSON.parse(fs.readFileSync(graphFile, 'utf8'));
-  // 图 JSON 既可能是完整输入（含 graph 字段），也可能是纯图对象
+  const overrides = log.suggestOverrides();
+  const k = log.suggestLegacyK();
+  const out = args.o || args.output;
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify({ overrides, suggestion: k }, null, 2)}\n`);
+    return 0;
+  }
+  if (out) {
+    fs.writeFileSync(out, `${JSON.stringify(overrides, null, 2)}\n`, 'utf8');
+    process.stdout.write(`已写入参数覆盖：${path.resolve(out)}\n`);
+  }
+  process.stdout.write(`${k.note}\n`);
+  process.stdout.write(`${Object.keys(overrides).length ? `建议覆盖：${JSON.stringify(overrides)}` : '样本还不够，暂不建议覆盖任何参数'}\n`);
+  process.stdout.write('说明：本模块不改任何节点的 S（那是机制的活），只调参数。\n');
+  return 0;
+}
+
+/** 体检：账本估计 vs 图里机制算出的 S（本模块在新分工下的主要产出） */
+function cmdCompare(args) {
+  const file = args._[1];
+  const graphFile = args._[2];
+  if (!file || !graphFile) throw new Error('compare 需要 <账本.json> 与 <图.json> 两个路径');
+  const log = loadLedger(file);
+  const raw = JSON.parse(fs.readFileSync(graphFile, 'utf8').replace(/^\uFEFF/, ''));
   const input = raw.graph ? raw : { graph: raw };
   const g = Graph.from_object(input.graph, input.current_real_time === undefined ? 0 : input.current_real_time);
-  // 图里没有记忆状态时先初始化，否则 applyToGraph 会以"默认初值"为起点
   for (const n of g.nodes.values()) memoryDsr.ensureState(n, 0);
-  const applied = log.applyToGraph(g);
-  const out = args.o || args.output;
-  const payload = Object.assign({}, input, {
-    graph: {
-      nodes: Array.from(g.nodes.values()).map((n) => ({
-        id: n.id,
-        name: n.name,
-        type: n.type,
-        ms: n.ms,
-        weight: n.weight,
-        last_review_time: n.last_review_time,
-        m: n.m,
-      })),
-      edges: g.edges.map((e) => ({ id: e.id, from: e.from, to: e.to, ls: e.ls, visit: e.visit })),
-    },
-  });
-  if (out) {
-    fs.writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-    process.stdout.write(`已把 ${applied} 个节点的修正写回：${path.resolve(out)}\n`);
-  } else {
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  const cmp = log.compareWithGraph(g);
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify(cmp, null, 2)}\n`);
+    return 0;
   }
+  const lines = [`体检：${cmp.samples} 个有效节点`, cmp.bias_note];
+  if (cmp.rows.length) {
+    lines.push('节点                 证据    机制 S      账本估 S   比值   误差下界');
+    for (const r of cmp.rows) {
+      lines.push(
+        `${String(r.node).padEnd(20)} ${String(r.count).padStart(4)}  `
+        + `${String(r.graph_S).padStart(9)}  ${String(r.ledger_S).padStart(10)}  `
+        + `${(r.ratio === null ? '—' : `${r.ratio.toFixed(2)}×`).padStart(6)}  ±${r.se_best_pct}%`
+      );
+    }
+  }
+  process.stdout.write(`${lines.join('\n')}\n`);
   return 0;
 }
 
@@ -242,15 +260,17 @@ function main(argv) {
     if (cmd === 'add') return cmdAdd(args);
     if (cmd === 'report') return cmdReport(args);
     if (cmd === 'suggest') return cmdSuggest(args);
-    if (cmd === 'apply') return cmdApply(args);
+    if (cmd === 'params') return cmdApply(args);
+    if (cmd === 'compare') return cmdCompare(args);
     if (cmd === 'demo') return cmdDemo(args);
     process.stdout.write(
       '用法：\n'
       + '  node tools/feedback.js init    <账本.json> [图.json]\n'
       + '  node tools/feedback.js add     <账本.json> --node <节点> --hours <小时> --correct|--wrong [--at <ms>] [--r0 <0-1>]\n'
       + '  node tools/feedback.js report  <账本.json> [--json]\n'
+      + '  node tools/feedback.js compare <账本.json> <图.json>     # 体检：账本估计 vs 机制算出的 S\n'
       + '  node tools/feedback.js suggest <账本.json>\n'
-      + '  node tools/feedback.js apply   <账本.json> <图.json> [-o 输出.json]\n'
+      + '  node tools/feedback.js params  <账本.json> [-o overrides.json]   # 只调参数，不改 S\n'
       + '  node tools/feedback.js demo    [--events 400]\n'
     );
     return cmd ? 1 : 0;
@@ -264,4 +284,4 @@ if (require.main === module) {
   process.exitCode = main(process.argv.slice(2));
 }
 
-module.exports = { main, cmdInit, cmdAdd, cmdReport, cmdSuggest, cmdApply, cmdDemo, parseArgs };
+module.exports = { main, cmdInit, cmdAdd, cmdReport, cmdSuggest, cmdApply, cmdCompare, cmdDemo, parseArgs };

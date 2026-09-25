@@ -1,11 +1,22 @@
 /**
- * MindNet 反馈微调：拿到"某道题隔了 t 小时答对/答错"之后，修正这个节点的稳定度
+ * MindNet 反馈：拿到"某道题隔了 t 小时答对/答错"之后，**体检模型准不准**
+ *
+ * ⚠ 分工（2026-09 定案，见 docs/IO_PROTOCOL.md §6）：
+ *   每条线索的 `S` 只由**机制**（mechanisms/memory.dsr.js）改 —— 那是模型的物理，
+ *   懂难度、懂储蓄效应、懂三种复习类型的差别。
+ *   本模块**不写任何节点的 S**，它做两件事：
+ *     1. 用一条独立的估计律持续累计"模型预测 vs 你的实际表现"，给出偏差读数
+ *        （compareWithGraph：机制算的 S 与账本估的 S 差多少、往哪个方向差）；
+ *     2. 把攒够的证据换成**参数**建议（suggestOverrides：新知识的初始强度 k 等）。
+ *   为什么不让本模块直接改 S：同一个事件被两条规则记账，数字会互相抵消或翻倍，
+ *   状态就不可复算了；而且单条线索的 S 靠对错最多只能定到 ±70%（100 条）/ ±30%（400 条，
+ *   见下面的 Fisher 信息推导），拿这么吵的估计去覆盖物理公式是拿噪声换模型。
  *
  * 与标定的区别：
  *   标定 = 一次性的先验（用文献默认值就够，个人差异靠这一步修）
  *   反馈 = 日常持续的证据流（每做一道题一条），它才是真正把你和模型对齐的东西
  *
- * 更新律（与 docs/MODEL_v2_MATH.md 同源，不另造模型）：
+ * 估计律（与 docs/MODEL_v2_MATH.md 同源，不另造模型）：
  *   p  = R0 · Ψ(t/S)                 ← 模型预测这次能想起来的概率
  *   e  = y − p                       ← y=1 答对、y=0 答错；这就是"预测误差"
  *   u  = 4p(1−p)                     ← 信息量权重：p≈0.5 时最有信息，p≈0/1 时几乎为零
@@ -98,7 +109,10 @@
   }
 
   /**
-   * 单条证据的稳定度更新（纯函数）。
+   * 单条证据的**账本估计**更新（纯函数）。
+   *
+   * 注意它更新的是"账本里的估计值"，**不是图里的 S** —— 这个估计值只用于体检与参数建议
+   * （见文件头的分工说明）。名字保留是为了不破坏既有调用方。
    * @param {object} p { S, R0, tHours, correct, count?, options? }
    *        count = 这个节点此前已经收过几条证据（用来算递减增益）
    * @returns {object} { S, delta_ratio, R_at_test, weight, error, gain, D_delta }
@@ -226,23 +240,58 @@
       return fresh;
     }
 
-    /** 把修正后的参数写回图（引擎后续就用这些值） */
-    applyToGraph(graph) {
-      let applied = 0;
-      for (const [id, ledger] of Object.entries(this.nodes)) {
-        const node = graph.get_node(id);
-        if (!node) continue;
-        if (!node.m) node.m = {};
-        const bag = node.m.memory_dsr || (node.m.memory_dsr = {
-          R0: ledger.R0, S: ledger.S, Sigma: ledger.R0, D: ledger.D, N: 0, F: 0,
-          lastFail: null, lastReview: node.last_review_time || 0, history: [], initializedAt: 0,
-        });
-        bag.R0 = ledger.R0;
-        bag.S = ledger.S;
-        bag.D = ledger.D;
-        applied += 1;
+    /**
+     * 体检报告：把「账本估计的 S」与「图里机制算出的 S」摆在一起对照。
+     *
+     * 这是本模块在新分工下的主要产出 —— 它**不改**图里的 S（那是机制的活），
+     * 只回答"我估的和你算的差多少、差在哪个方向"。
+     * @returns {object} { rows, bias_ratio, bias_note, samples }
+     */
+    compareWithGraph(graph) {
+      if (!graph || typeof graph.get_node !== 'function') {
+        throw new MindNetError('compareWithGraph 需要传入 Graph');
       }
-      return applied;
+      const rows = [];
+      for (const [id, ledger] of Object.entries(this.nodes)) {
+        if (!ledger.count) continue;
+        const node = graph.get_node(id);
+        const bag = node && node.m && node.m.memory_dsr;
+        if (!bag) continue;
+        rows.push({
+          node: id,
+          graph_S: round(bag.S, 3),
+          ledger_S: round(ledger.S, 3),
+          ratio: bag.S > 0 ? round(ledger.S / bag.S, 3) : null,
+          count: ledger.count,
+          se_best_pct: seAsPercent(ledger.count),
+        });
+      }
+      rows.sort((a, b) => b.count - a.count);
+      const usable = rows.filter((r) => r.ratio !== null && r.count >= 3);
+      const bias = usable.length
+        ? Math.exp(usable.reduce((s, r) => s + Math.log(r.ratio), 0) / usable.length)
+        : null;
+      return {
+        rows,
+        samples: usable.length,
+        bias_ratio: bias === null ? null : round(bias, 3),
+        bias_note: bias === null
+          ? `有效样本 ${usable.length} 个（每个节点至少 3 条证据）—— 还看不出系统性偏差`
+          : (Math.abs(bias - 1) < 0.15
+            ? `机制算出的 S 与账本估计基本一致（比值 ${round(bias, 2)}，${usable.length} 个节点）`
+            : `机制算出的 S 系统性${bias > 1 ? '偏保守' : '偏乐观'} ${round(Math.abs(bias - 1) * 100, 0)}%（比值 ${round(bias, 2)}，${usable.length} 个节点）—— 调参数或者继续攒证据`),
+      };
+    }
+
+    /**
+     * 本模块**唯一**的"写"出口：把体检结论变成参数覆盖（不碰任何节点的 S）。
+     * @returns {object} 形如 { 'memory.dsr.legacy_k': 31.2 }，可直接当 overrides 用
+     */
+    suggestOverrides() {
+      const out = {};
+      const k = this.suggestLegacyK();
+      if (k.samples >= 3) out['memory.dsr.legacy_k'] = k.legacy_k;
+      return out;
     }
 
     /**

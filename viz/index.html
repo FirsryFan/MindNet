@@ -104,7 +104,7 @@
     </div>
 
     <div class="card" id="feedback-card">
-      <h2>反馈 <small>做完一道题就点一下，模型自己往你身上靠</small></h2>
+      <h2>反馈 <small>做完一道题就点一下：记账 + 体检模型准不准</small></h2>
       <div class="row">
         <label>这条线索</label><span class="pill wait" id="fb-node">未选中</span>
         <label>距上次复习</label>
@@ -115,16 +115,17 @@
         <button id="fb-yes" class="primary">答对了</button>
         <button id="fb-no">答错了</button>
         <button id="fb-undo">撤销上一条</button>
-        <span class="hint"><input type="checkbox" id="fb-auto" checked> 自动写回图</span>
       </div>
       <div class="msg" id="fb-out"></div>
-      <table><thead><tr><th>量</th><th>反馈前</th><th>现在</th></tr></thead><tbody id="fb-delta"></tbody></table>
+      <table><thead><tr><th>量</th><th>机制</th><th>体检估计</th></tr></thead><tbody id="fb-delta"></tbody></table>
       <div class="msg" id="fb-next-at"></div>
       <div class="row">
-        <button id="fb-apply">把修正写回图</button>
+        <button id="fb-apply">把体检结论写成参数</button>
         <button id="fb-reset" class="danger">清空反馈</button>
         <span class="msg" id="fb-k"></span>
       </div>
+      <p class="hint">每条线索的 S 由模型自己的公式维护（「机制」那一列）；本面板只记录证据、
+        对照出偏差，并在证据够多时建议<b>参数</b>（不改任何节点的 S）。</p>
       <details style="margin-top:8px">
         <summary>最近记录（共 <span id="fb-count">0</span> 条 · 点一行可选中该节点）</summary>
         <table><thead><tr><th>记录时间</th><th>节点</th><th>间隔</th><th>结果</th></tr></thead><tbody id="fb-log"></tbody></table>

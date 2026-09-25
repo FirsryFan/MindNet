@@ -340,7 +340,47 @@ test('IO · 存档：BOM 容错（Windows 编辑器写出的 JSONL 也能读）'
 
 // ------------------------------------------------------------- 例子与工具
 
-test('IO · 示例请求文件（example/requests/run_request_example.json）能被跑通并给出完整结果', () => {
+test('IO · 自检工具（tools/io_check.js）：合法请求返回 0 且不动状态，非法请求说人话并给可用 id', () => {
+  const { main } = require('../tools/io_check.js');
+  const reqFile = path.join(EXAMPLE, 'requests', 'run_request_example.json');
+  const out = [];
+  const err = [];
+  const so = process.stdout.write;
+  const se = process.stderr.write;
+  process.stdout.write = (s) => { out.push(String(s)); return true; };
+  process.stderr.write = (s) => { err.push(String(s)); return true; };
+  let code;
+  try {
+    code = main(['--request', reqFile, '--graph', 'demo_learning']);
+  } finally {
+    process.stdout.write = so;
+    process.stderr.write = se;
+  }
+  assert.equal(code, 0, err.join(''));
+  assert.match(out.join(''), /请求合法/);
+  assert.match(out.join(''), /lapse/);
+  // example 图没有被自检改动（自检跑在克隆体上）
+  const graphAfter = JSON.parse(fs.readFileSync(path.join(EXAMPLE, 'demo_learning.json'), 'utf8'));
+  assert.equal(graphAfter.graph.nodes.find((n) => n.id === 'polar').m, undefined);
+});
+
+test('IO · example/requests/ 下的每个请求文件都必须是合法请求（文档例子不许过期）', () => {
+  const dir = path.join(EXAMPLE, 'requests');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  assert.ok(files.length >= 1, '至少要有一份示例请求');
+  for (const file of files) {
+    const request = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8').replace(/^\uFEFF/, ''));
+    const loaded = demoGraph();
+    const { engine, kernel } = makeEngine(loaded.graph);
+    engine.start_diffusion(loaded.initial_nodes, loaded.target_nodes);
+    const res = io.run({ engine, kernel, archive: new RunArchive(), request, memoryDsr, profile: 'v2' });
+    assert.equal(res.status, 'ok', `${file} 应当能跑通`);
+    assert.ok(res.applied.length === request.actions.length, `${file} 的每条动作都要有效果记录`);
+    assert.equal(res.trace.invariants.ok, true, `${file}: ${res.trace.invariants.problems.join('; ')}`);
+  }
+});
+
+test('IO · 示例请求的结果里能追到"照片区域"这一级的出处，且机制清单/参数指纹齐全', () => {
   const raw = fs.readFileSync(path.join(EXAMPLE, 'requests', 'run_request_example.json'), 'utf8').replace(/^\uFEFF/, '');
   const request = JSON.parse(raw);
   assert.equal(request.protocol, 'mindnet.run/1');
@@ -352,7 +392,6 @@ test('IO · 示例请求文件（example/requests/run_request_example.json）能
   assert.equal(res.applied.length, 4);
   assert.equal(res.model.mechanisms.indexOf('memory.dsr') >= 0, true);
   assert.match(res.model.overrides_digest, /^n\d+-/);
-  // 结果里必须能追到"照片区域"这一级的出处
   assert.equal(res.applied[0].evidence.region, '第 3 题第 (2) 问');
   assert.equal(res.applied[0].confidence, 0.8);
 });

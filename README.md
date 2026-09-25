@@ -132,8 +132,17 @@ T6 成本 1 分钟）→ 点「保存参数」→ 打开 `viz/index.html`，模�
 协议与判断标准见 `docs/CALIBRATION.md` §1。
 
 **然后靠做题反馈继续修**：在 `viz/index.html` 右侧「反馈」卡片里选中一条线索 → 点「答对了 / 答错了」，
-立刻看到 `S` 怎么变、下次该什么时候复习，并可一键写回图；命令行等价物是 `node tools/feedback.js`。
+面板会把**机制算的 `S`** 与**体检估的 `S`** 并排列出来，并告诉你模型偏乐观还是偏保守；
+证据够多时点「把体检结论写成参数」即可写成参数覆盖。命令行等价物是
+`node tools/feedback.js compare <账本> <图>`（看体检）与 `params <账本>`（拿参数建议）。
 规则与诚实边界（一道题只有 1 bit ⇒ 400 条才到 ±30%）见 `docs/FEEDBACK.md`。
+
+**上游怎么把「我做了什么」喂进来**（照片 → 结构化 → 跑模型）：本模块吃 `mindnet.run/1` 请求、
+吐 `mindnet.result/1`（含 `trace` 完整运作过程 + append-only 存档）。契约见 `docs/IO_PROTOCOL.md`，
+给 AI 用的转写规程见 `docs/TRANSCRIBE.md`，命令行 `node tools/io_run.js --request … --graph …`。
+
+**每个数的归属**（避免两条规则同时改一个量）：`S` 只由机制（`mechanisms/memory.dsr.js`）改；
+反馈模块只观测与建议参数 —— 定案写在 `docs/IO_PROTOCOL.md` §6。
 
 **v2 怎么用（五行）**
 

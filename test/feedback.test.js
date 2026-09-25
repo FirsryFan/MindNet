@@ -165,26 +165,41 @@ test('反馈 · 回放确定性：同事件序列 ⇒ 同结果，且与逐步�
   assert.deepEqual(replayed.events.map((e) => e.S), log.events.map((e) => e.S));
 });
 
-test('反馈 · 写回图：修正后的 S 会被引擎用于排程', () => {
+test('反馈 · 体检：账本估计与机制算出的 S 对照，且**不改**图里的任何 S', () => {
   const g = makeGraph([['A', { ms: 0.8 }], ['B', { ms: 0.6 }]], [['A', 'B', 0.9]]);
   // 记忆状态是惰性初始化的（引擎第一次 sync 时才建），所以这里先走一次真实初始化
   for (const n of g.nodes.values()) memoryDsr.ensureState(n, 0);
   const log = new FeedbackLog();
   log.harvest(g);                        // 起点 = 图里现有的记忆状态
   close(log.nodes.A.S, 24 * 0.8, 1e-6);  // 引擎初值 S = legacy_k·R0 = 19.2（这里只差浮点尾数）
+
+  const mechBefore = g.get_node('A').m.memory_dsr.S;
   for (let i = 0; i < 6; i += 1) log.record({ node: 'A', tHours: 30, correct: true });
-  // 注意口径：R0=0.8，所以 85% 留存是够不到的（scheduleInterval 会返回 0）——用 70% 比较
-  const before = g.get_node('A').m.memory_dsr.S;
-  const beforeInterval = memoryDsr.scheduleInterval(g.get_node('A'), 0, 0.7, { decay_model: 'power' });
-  const applied = log.applyToGraph(g);
-  assert.equal(applied, 2);
-  assert.ok(g.get_node('A').m.memory_dsr.S > before, 'S 应当被上调');
-  // 排程随之变化：S 变大 ⇒ 同样的目标留存可以等更久
-  const afterInterval = memoryDsr.scheduleInterval(g.get_node('A'), 0, 0.7, { decay_model: 'power' });
-  assert.ok(afterInterval > beforeInterval * 1.1,
-    `S 变大后排程应更远：${beforeInterval.toFixed(1)}h → ${afterInterval.toFixed(1)}h`);
-  // 没反馈的节点保持原样
-  close(g.get_node('B').m.memory_dsr.S, 24 * 0.6, 1e-6);
+
+  // ① 账本自己动了（这是体检读数）
+  assert.ok(log.nodes.A.S > log.nodes.A.origin.S, '账本估计应当上升');
+  // ② 图里的 S 一动不动 —— 那是机制的活（分工见 docs/IO_PROTOCOL.md §6）
+  close(g.get_node('A').m.memory_dsr.S, mechBefore, 1e-12);
+  assert.equal(log.applyToGraph, undefined, '本模块不再提供"把 S 写回图"的出口');
+
+  // ③ 体检对照：机制值 / 账本值 / 比值 / 误差下界
+  const cmp = log.compareWithGraph(g);
+  assert.equal(cmp.rows.length, 1);
+  assert.equal(cmp.rows[0].node, 'A');
+  close(cmp.rows[0].graph_S, mechBefore, 1e-6);
+  close(cmp.rows[0].ledger_S, log.nodes.A.S, 5e-3);   // 对照表里的值保留 3 位小数
+  assert.ok(cmp.rows[0].ratio > 1, '账本估得更高 ⇒ 记为"机制偏保守"');
+  assert.ok(cmp.rows[0].se_best_pct > 0);
+  assert.match(cmp.bias_note, /保守|一致|样本/);
+
+  // ④ 唯一出口是参数建议；样本不足时不乱给
+  assert.deepEqual(log.suggestOverrides(), {}, '只有一个节点 ⇒ 不给参数建议');
+  const more = new FeedbackLog();
+  for (const [id, S] of [['a', 56], ['b', 48], ['c', 56]]) {
+    more.nodes[id] = { R0: 0.8, S, D: 5, count: 4, correct: 3, lastAt: null, origin: { R0: 0.8, S: 19.2, D: 5 } };
+  }
+  // S/R0 = 70 / 60 / 70 ⇒ 中位数 70
+  assert.deepEqual(more.suggestOverrides(), { 'memory.dsr.legacy_k': 70 });
 });
 
 test('反馈 · 全局建议：k 取 S/R0 的中位数，样本不足时沿用默认', () => {

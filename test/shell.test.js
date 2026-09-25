@@ -103,7 +103,7 @@ test('可视化壳：反馈面板引用的 DOM 元素都在 index.html 里，且
   assert.ok(pos('feedback_panel.js') < pos('app.js'), 'app.js 启动时要能拿到面板');
 });
 
-test('可视化壳：反馈面板的账本逻辑与引擎一致（记录 → S 变化 → 写回图）', () => {
+test('可视化壳：反馈面板的账本逻辑与引擎一致（记账 ≠ 改图里的 S）', () => {
   const { FeedbackLog } = require('../src/feedback.js');
   const graph = mindnet.Graph.from_object(
     { nodes: [{ id: 'A', name: 'A', type: 'knowledge', ms: 0.8 }], edges: [] },
@@ -112,14 +112,19 @@ test('可视化壳：反馈面板的账本逻辑与引擎一致（记录 → S �
   mindnet.memoryDsr.ensureState(graph.get_node('A'), 0);
   const log = new FeedbackLog();
   log.harvest(graph);
-  const before = graph.get_node('A').m.memory_dsr.S;
+  const mechBefore = graph.get_node('A').m.memory_dsr.S;
   log.record({ node: 'A', tHours: 48, correct: false });
   const after = log.nodes.A.S;
-  assert.ok(after < before, `答错必须下调 S：${before} → ${after}`);
-  assert.equal(log.applyToGraph(graph), 1);
-  close(graph.get_node('A').m.memory_dsr.S, after, 1e-9);
+  assert.ok(after < mechBefore, `账本估计应当下调：${mechBefore} → ${after}`);
+  // 分工：图里的 S 由机制维护，本模块不再有写回出口（docs/IO_PROTOCOL.md §6）
+  assert.equal(log.applyToGraph, undefined);
+  close(graph.get_node('A').m.memory_dsr.S, mechBefore, 1e-12);
   // 面板自检里那两个数字（fb_s_before / fb_s_after）就是这两个值
-  assert.ok(log.record({ node: 'A', tHours: 48, correct: true }).S > after, '答对必须上调 S');
+  assert.ok(log.record({ node: 'A', tHours: 48, correct: true }).S > after, '答对必须上调账本估计');
+  // 体检对照可用，且唯一出口是参数建议
+  const cmp = log.compareWithGraph(graph);
+  assert.equal(cmp.rows.length, 1);
+  assert.equal(typeof log.suggestOverrides(), 'object');
 });
 
 test('CLI：文档示例输出与 §8.2 完全一致', () => {

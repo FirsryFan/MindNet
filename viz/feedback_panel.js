@@ -125,11 +125,39 @@
     const body = el.delta;
     body.textContent = '';
     const now = ctx.getNow();
-    const next = nextInterval(id, ledger);
+    // 图里的 S 是"机制算的"（引擎真正排程用的那个）；账本里的 S 是"体检估计的"。
+    // 两个都显示，才能看出模型偏乐观还是偏保守 —— 这是本面板在新分工下的主要价值。
+    const graph = ctx.getGraph();
+    const node = graph && graph.get_node(id);
+    const bag = node && node.m && node.m.memory_dsr;
+    const mech = bag
+      ? {
+        R0: bag.R0, S: bag.S, D: bag.D, lastReview: bag.lastReview,
+        node: Object.assign({}, node, { m: { memory_dsr: Object.assign({}, bag) } }),
+      }
+      : {
+        R0: ledger.R0, S: ledger.S, D: ledger.D, lastReview: now,
+        node: stubFromLedger(id, ledger),
+      };
+    const target = targetRetention();
+    let nextHours = null;
+    if (memoryDsr && typeof memoryDsr.scheduleInterval === 'function') {
+      try {
+        nextHours = memoryDsr.scheduleInterval(mech.node, now, target, { decay_model: 'power' });
+      } catch (err) {
+        nextHours = null;
+      }
+    }
+    const ratio = mech.S > 0 ? ledger.S / mech.S : null;
     const rows = [
-      ['稳定度 S（小时）', before === null ? ledger.origin.S : before, ledger.S, (v) => fmt(v, 1)],
-      ['难度 D（1–10）', before === null ? ledger.origin.D : before.d, ledger.D, (v) => fmt(v, 2)],
-      [`下一次复习（目标留存 ${fmt(next && next.target, 2)}）`, null, next && next.hours, (v) => (v ? hoursToHuman(v) : '—')],
+      ['稳定度 S（小时）· 机制 vs 体检估计',
+        mech.S, ledger.S,
+        (v) => fmt(v, 1)],
+      ['难度 D（1–10）· 机制 vs 体检估计',
+        mech.D, ledger.D,
+        (v) => fmt(v, 2)],
+      [`下一次复习（目标留存 ${fmt(target, 2)}，按机制 S 算）`, null, nextHours, (v) => (v ? hoursToHuman(v) : '—')],
+      ['体检偏差（账本 ÷ 机制）', null, ratio, (v) => (v ? `${fmt(v, 2)}×` : '—')],
     ];
     for (const [label, b, a, f] of rows) {
       const tr = document.createElement('tr');
@@ -139,25 +167,39 @@
       td2.textContent = b === null || b === undefined ? '—' : f(b);
       const td3 = document.createElement('td');
       td3.textContent = a === null || a === undefined ? '—' : f(a);
-      if (b !== null && b !== undefined && a !== null && a !== undefined && a !== b) {
-        td3.className = a > b ? 'up' : 'down';
+      if (before && label.indexOf('机制') >= 0) {
+        // 记录前后对比：这里的 before 是账本估计，标个颜色便于看方向
+        td3.className = a >= b ? 'up' : 'down';
+      } else if (label.indexOf('偏差') === 0 && ratio !== null) {
+        td3.className = ratio >= 1 ? 'down' : 'up';
       }
       tr.append(td1, td2, td3);
       body.appendChild(tr);
     }
-    // 目标留存够不到编码上限 R0 时，排程公式会返回 0 —— 说清楚原因，别让人以为坏了
-    if (next && next.hours === 0) {
+    if (ratio !== null && Math.abs(ratio - 1) > 0.25 && ledger.count >= 3) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 3;
       td.className = 'hint';
-      td.textContent = `目标留存 ${fmt(next.target, 2)} 已经高过这条线索的编码上限 R0 = ${fmt(ledger.R0, 2)}，`
+      td.textContent = `模型的 S 比你实际表现${ratio > 1 ? '保守' : '乐观'}约 ${fmt(Math.abs(ratio - 1) * 100, 0)}%（${ledger.count} 条证据，`
+        + `误差下界 ±${fmt(100 * (Math.exp(FB.seLogSBest(ledger.count)) - 1), 0)}%）。`
+        + '证据还不够时别急着改参数 —— 攒到几十条再看。';
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+    // 目标留存够不到编码上限 R0 时，排程公式会返回 0 —— 说清楚原因，别让人以为坏了
+    if (nextHours === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 3;
+      td.className = 'hint';
+      td.textContent = `目标留存 ${fmt(target, 2)} 已经高过这条线索的编码上限 R0 = ${fmt(mech.R0, 2)}，`
         + '曲线永远够不到 ⇒ 间隔为 0。要么多提取几次把 R0 顶上去，要么把目标降到 R0 以下（标定页第 6 项）。';
       tr.appendChild(td);
       body.appendChild(tr);
     }
-    el.nextAt.textContent = next && next.hours
-      ? `从现在（第 ${fmt(now, 1)} 小时）起 ${hoursToHuman(next.hours)} 后复习，约在第 ${fmt(now + next.hours, 1)} 小时`
+    el.nextAt.textContent = nextHours
+      ? `按模型算：从现在（第 ${fmt(now, 1)} 小时）起 ${hoursToHuman(nextHours)} 后复习，约在第 ${fmt(now + nextHours, 1)} 小时`
       : '';
   }
 
@@ -263,13 +305,12 @@
     }
     lastBefore = before;
     save();
-    let applied = 0;
-    if (el.auto.checked) applied = log.applyToGraph(ctx.getGraph());
-    if (applied && ctx.onApplied) ctx.onApplied();
+    // 只记录，不改图里的 S：S 由机制（memory.dsr）在真正的复习事件里维护。
+    // 本面板的产出是"体检读数"与"参数建议"（点「写回参数」才落到 overrides）。
     el.out.textContent = `模型考前预测 p = ${fmt(rec.R_at_test * 100, 0)}% ⇒ ${correct ? '答对' : '答错'}：`
-      + `S ${fmt(before.S, 1)} → ${fmt(rec.S, 1)} 小时（${rec.delta_ratio >= 1 ? '+' : ''}${fmt((rec.delta_ratio - 1) * 100, 1)}%，`
-      + `信息量权重 ${fmt(rec.weight, 2)}、本次增益 ${fmt(rec.gain, 3)}）`
-      + (applied ? '，已写回图。' : '；勾上「自动写回」或点「写回图」才会影响引擎排程。');
+      + `账本估计 S ${fmt(before.S, 1)} → ${fmt(rec.S, 1)} 小时（${rec.delta_ratio >= 1 ? '+' : ''}${fmt((rec.delta_ratio - 1) * 100, 1)}%，`
+      + `信息量权重 ${fmt(rec.weight, 2)}、增益 ${fmt(rec.gain, 3)}）。`
+      + '这是**体检估计**，不改图里的 S（那是模型的物理公式管的）。';
     render();
   }
 
@@ -284,15 +325,30 @@
     log.events = fresh.events;
     lastBefore = null;
     save();
-    if (el.auto.checked && log.applyToGraph(ctx.getGraph()) && ctx.onApplied) ctx.onApplied();
     el.out.textContent = `已撤销最后一条（${gone.node} · ${gone.correct ? '对' : '错'}），账本回放到撤销后的状态。`;
     render();
   }
 
   function applyAll() {
-    const n = log.applyToGraph(ctx.getGraph());
-    if (n && ctx.onApplied) ctx.onApplied();
-    el.out.textContent = `已把 ${n} 个节点的修正写回图 —— 引擎的排程、遗忘曲线、控制层诊断都会用新的 S。`;
+    // 分工（docs/IO_PROTOCOL.md §6）：S 由机制管，本面板只把体检结论写成**参数覆盖**。
+    // 覆盖存进 localStorage['mindnet.overrides']，引擎下次装配时生效。
+    const overrides = log.suggestOverrides();
+    const n = Object.keys(overrides).length;
+    if (!n) {
+      el.out.textContent = '证据还不够（至少 3 个节点、每个节点 ≥1 条；建议每个 ≥3 条），暂时不建议改任何参数。'
+        + 'S 本身由模型自己的公式维护，不受影响。';
+      render();
+      return;
+    }
+    try {
+      const raw = globalThis.localStorage && localStorage.getItem(OVERRIDE_KEY);
+      const merged = Object.assign({}, raw ? JSON.parse(raw) : {}, overrides);
+      localStorage.setItem(OVERRIDE_KEY, JSON.stringify(merged));
+      el.out.textContent = `已写入参数覆盖：${Object.keys(overrides).map((k) => `${k} → ${overrides[k]}`).join('，')}。`
+        + '刷新页面后生效。这条线索的 S 仍由模型自己的公式维护 —— 本面板不改它。';
+    } catch (err) {
+      el.out.textContent = `本机存储不可用，无法写入参数覆盖：${err.message}`;
+    }
     render();
   }
 
@@ -316,7 +372,6 @@
     el.no = $('fb-no');
     el.undo = $('fb-undo');
     el.apply = $('fb-apply');
-    el.auto = $('fb-auto');
     el.reset = $('fb-reset');
     el.out = $('fb-out');
     el.delta = $('fb-delta');

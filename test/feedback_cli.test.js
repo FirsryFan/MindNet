@@ -95,27 +95,37 @@ test('反馈 CLI · add：缺参数时给出用法提示而不是崩栈', () => 
   cleanupTmp();
 });
 
-test('反馈 CLI · apply：写回的图能被引擎载入，且新 S 真的改变了排程', () => {
-  const ledger = tmpPath(`fb_apply_${process.pid}.json`);
-  const outFile = tmpPath(`fb_graph_${process.pid}.json`);
+test('反馈 CLI · params / compare：只给参数建议，不改图里的 S；体检能报出偏差', () => {
+  const ledger = tmpPath(`fb_params_${process.pid}.json`);
+  const outFile = tmpPath(`fb_overrides_${process.pid}.json`);
   assert.equal(run(['init', ledger, EXAMPLE]).code, 0);
-  // 给 polar 喂 8 条"答对"，S 应当明显变大
-  for (let i = 0; i < 8; i += 1) {
-    assert.equal(run(['add', ledger, '--node', 'polar', '--hours', '3', '--correct']).code, 0);
+  // 给三个节点各喂 4 条"答对"，让 k 建议有样本
+  for (const node of ['polar', 'coordinate', 'vector']) {
+    for (let i = 0; i < 4; i += 1) {
+      assert.equal(run(['add', ledger, '--node', node, '--hours', '3', '--correct']).code, 0);
+    }
   }
-  const sAfter = FeedbackLog.loadFromFile(ledger).nodes.polar.S;
-  assert.equal(run(['apply', ledger, EXAMPLE, '-o', outFile]).code, 0);
+  const r = run(['params', ledger, '-o', outFile]);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.text, /本模块不改任何节点的 S/);
+  const overrides = JSON.parse(fs.readFileSync(outFile, 'utf8').replace(/^\uFEFF/, ''));
+  assert.equal(typeof overrides['memory.dsr.legacy_k'], 'number', `应当给出 legacy_k 建议：${JSON.stringify(overrides)}`);
 
-  const written = JSON.parse(fs.readFileSync(outFile, 'utf8'));
-  const graph = mindnet.Graph.from_object(written.graph, written.current_real_time === undefined ? 0 : written.current_real_time);
-  const node = graph.get_node('polar');
-  assert.ok(Math.abs(node.m.memory_dsr.S - sAfter) < 1e-6, `写回的 S 应当等于账本：${node.m.memory_dsr.S} vs ${sAfter}`);
-  // 起点是 ms=0.15 的图，现在这条线索的 S 明显更大 ⇒ 同样目标留存能等更久
-  const interval = memoryDsr.scheduleInterval(node, 0, 0.1, { decay_model: 'power' });
-  assert.ok(interval > 0, `排程应当算得出来，实际 ${interval}`);
-  // 引擎能直接吃这份图
-  const loaded = mindnet.Graph.load_input(written, 0);
-  assert.equal(loaded.graph.size, 10);
+  // compare：账本估计 vs 图里机制算出的 S
+  const cmp = run(['compare', ledger, EXAMPLE, '--json']);
+  assert.equal(cmp.code, 0, cmp.err);
+  const parsed = JSON.parse(cmp.text);
+  assert.equal(parsed.rows.length, 3);
+  for (const row of parsed.rows) {
+    assert.ok(row.graph_S > 0 && row.ledger_S > 0);
+    assert.equal(typeof row.ratio, 'number');
+  }
+  const human = run(['compare', ledger, EXAMPLE]);
+  assert.match(human.text, /体检：/);
+  // example 图文件本身没被动过（退休的 apply 会往里写 m 字段）
+  const graphAfter = JSON.parse(fs.readFileSync(EXAMPLE, 'utf8'));
+  assert.equal(graphAfter.graph.nodes.find((n) => n.id === 'polar').m, undefined,
+    'example 图里不该被写入记忆状态');
   fs.unlinkSync(ledger);
   fs.unlinkSync(outFile);
   cleanupTmp();
