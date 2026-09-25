@@ -198,8 +198,22 @@
       payload.openTicks = openTicks;
 
       // 3) 驱动：入边求和 + 亚阈累积（模块可改写 payload.drive）
-      payload.drive = this._rawDrive();
+      //    drive_edges 是逐边贡献明细，专供 I/O 层 trace（谁把它点亮的）
+      payload.drive_edges = [];
+      payload.drive = this._rawDrive(payload.drive_edges);
+      // 模块还可以在 drive.compute 里改写驱动。改了多少、是谁改的，也要记进明细，
+      // 否则"逐项之和 == 驱动"这条可核对性就断了（trace 的说服力全在这里）。
+      const driveBeforeHook = new Map(payload.drive);
       this.kernel.run('drive.compute', payload);
+      for (const [id, v] of payload.drive) {
+        const prev = driveBeforeHook.get(id) || 0;
+        if (Math.abs(v - prev) > 1e-12) {
+          payload.drive_edges.push({
+            from: null, to: id, edge_id: null, kind: 'module', module: 'drive.compute',
+            ls: null, al: null, ms: null, contribution: round6(v - prev),
+          });
+        }
+      }
 
       // 4) 激活更新（模块写 payload.next；没模块就不变）
       this.kernel.run('activation.update', payload);
@@ -228,11 +242,13 @@
 
       // 7) 落状态（先只落状态；al 在 state.after 之后再同步，
       //    这样模块可以在 state.after 里调整激活，al 始终反映本轮最终的激活值）
+      payload.state_changes = [];   // 供 I/O 层 trace：这一轮每个节点从什么状态变成了什么
       for (const node of nodes) {
         const before = node.state;
         if (conscious.has(node.id)) node.state = STATE.CONSCIOUS;
         else if (subconscious.has(node.id)) node.state = STATE.SUBCONSCIOUS;
         else node.state = STATE.INACTIVE;
+        payload.state_changes.push({ id: node.id, state_before: before, state_after: node.state });
         if (node.state !== STATE.INACTIVE) {
           this._recordActivation(node.id, payload.drive ? payload.drive.get(node.id) : 0);
           if (before === STATE.INACTIVE) {
@@ -250,6 +266,8 @@
 
       this.kernel.run('state.after', payload);
       for (const node of nodes) node.al = clamp01(this.core(node.id).a);
+      // state_changes 里的 al 取"本轮最终激活值"（state.after 之后）
+      for (const rec of payload.state_changes) rec.al = round6(this.core(rec.id).a);
       // 峰值驱动要覆盖**所有**节点（不只是亮过的）：诊断需要知道
       // "这个节点到底收到了多少输入"，否则"线索太弱"会被记成 0%。
       for (const node of nodes) {
@@ -297,7 +315,12 @@
 
     // -------------------------------------------------------------- 内部
 
-    _rawDrive() {
+    /**
+     * 原始驱动：入边求和 + 亚阈累积。
+     * 第二个参数（可选）会收到**逐边贡献**明细 —— I/O 层的 trace 要用它回答
+     * "这个节点为什么会亮 / 为什么没亮"。不传就不记录（不影响任何既有行为）。
+     */
+    _rawDrive(edgeSink) {
       const drive = new Map();
       for (const node of this.graph.nodes.values()) drive.set(node.id, 0);
       for (const u of this.graph.nodes.values()) {
@@ -306,12 +329,29 @@
         const strength = typeof u.ms === 'number' ? u.ms : 0;
         if (!(strength > 0)) continue;
         for (const e of this.graph.out_edges(u.id)) {
-          drive.set(e.to, (drive.get(e.to) || 0) + au * strength * e.ls);
+          const contribution = au * strength * e.ls;
+          drive.set(e.to, (drive.get(e.to) || 0) + contribution);
+          if (edgeSink) {
+            edgeSink.push({
+              from: u.id, to: e.to, edge_id: e.id, kind: 'edge',
+              ls: e.ls, al: au, ms: strength,
+              contribution: round6(contribution),
+            });
+          }
         }
       }
       for (const node of this.graph.nodes.values()) {
         const q = this.core(node.id).q || 0;
-        if (q > 0) drive.set(node.id, (drive.get(node.id) || 0) + q);
+        if (q > 0) {
+          drive.set(node.id, (drive.get(node.id) || 0) + q);
+          // 亚阈累积也是驱动的来源之一，同样记进逐项明细（否则"之和 == 驱动"对不上）
+          if (edgeSink) {
+            edgeSink.push({
+              from: null, to: node.id, edge_id: null, kind: 'subthreshold',
+              ls: null, al: null, ms: null, contribution: round6(q),
+            });
+          }
+        }
       }
       return drive;
     }

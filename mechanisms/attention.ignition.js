@@ -25,6 +25,11 @@
     return Object.assign({}, DEFAULTS, o || {});
   }
 
+  /** 6 位小数：只用于对外展示（trace / 日志），不参与计算 */
+  function round6(x) {
+    return Math.round((Number(x) || 0) * 1e6) / 1e6;
+  }
+
   function sigmoid(x) {
     if (x >= 0) return 1 / (1 + Math.exp(-x));
     const e = Math.exp(x);
@@ -105,6 +110,10 @@
         const availability = ctx.payload.availability === undefined ? 1 : ctx.payload.availability;
         const conscious = [];
         const subconscious = [];
+        // 点火明细：概率点火是随机过程，不把当时的 p 与抽到的数记下来，
+        // 事后就无法回答"这一轮它为什么没亮"（I/O 层的 trace 要读它）。
+        const detail = [];
+        ctx.payload.ignition = detail;
         // 完全不在状态（availability=0）：再强的线索也进不了意识
         if (availability <= 0) {
           for (const id of ctx.payload.admitted || []) {
@@ -122,9 +131,16 @@
           const ct = node.ct_of(ctx.config);
           const st = node.st_of(ctx.config);
           const p = ignitionProbability(score, ct, o);
-          const hit = p >= 1 ? true : p <= 0 ? false : ctx.rng() < p;
+          const draw = p >= 1 || p <= 0 ? null : ctx.rng();
+          const hit = p >= 1 ? true : p <= 0 ? false : draw < p;
           if (hit) conscious.push(id);
           else if (score >= st) subconscious.push(id);
+          detail.push({
+            node: id, score: round6(score), ct: round6(ct), st: round6(st),
+            t_ign: o.T_ign, p: round6(p),
+            draw: draw === null ? null : round6(draw),
+            hit,
+          });
         }
         ctx.payload.conscious = conscious;
         ctx.payload.subconscious = subconscious;

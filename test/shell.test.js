@@ -74,7 +74,11 @@ test('可视化壳：app.js 引用的引擎 API 全部存在（静态扫描 + �
 test('可视化壳：内置示例由 example/*.json 生成，且能被引擎载入', () => {
   const generated = require('../viz/sample_graph.js');
   const files = fs.readdirSync(EXAMPLE).filter((f) => f.endsWith('.json'));
+  assert.ok(files.length >= 2, 'example/ 下应当至少有 graph.json 与 demo_learning.json');
   for (const file of files) {
+    const raw = JSON.parse(fs.readFileSync(path.join(EXAMPLE, file), 'utf8').replace(/^\uFEFF/, ''));
+    // 只把"图输入"当示例：带 protocol 的 run 请求（example/requests/*.json）不算
+    if (raw.protocol && !raw.graph) continue;
     const key = path.basename(file, '.json');
     assert.ok(generated[key], `sample_graph.js 缺少示例 ${key}（请重跑 node viz/build_samples.js）`);
     const input = generated[key];

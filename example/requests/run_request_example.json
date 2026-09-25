@@ -1,0 +1,17 @@
+{
+  "protocol": "mindnet.run/1",
+  "run_id": "run-demo-0001",
+  "time": { "model_hours": 10, "wall": "2026-09-25T21:00:00+08:00" },
+  "steps": 3,
+  "meta": { "source": "photo", "note": "第 18 题做错了" },
+  "actions": [
+    { "kind": "review", "node": "polar", "outcome": "wrong", "closeness": 0.4,
+      "at": { "model_hours": 10, "wall": "2026-09-25T21:12:00+08:00" },
+      "evidence": { "source": "dsc_0042.jpg", "region": "第 3 题第 (2) 问", "problem_id": "P-1043" },
+      "confidence": 0.8 },
+    { "kind": "exposure", "node": "coordinate", "at": { "model_hours": 10.5 } },
+    { "kind": "knowledge", "edge": { "from": "trig_func", "to": "polar", "ls": 0.7 },
+      "at": { "model_hours": 10.5 } },
+    { "kind": "time", "at": { "model_hours": 11 } }
+  ]
+}
