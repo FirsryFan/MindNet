@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const cal = require('../src/calibration.js');
+const feedback = require('../src/feedback.js');
 const memoryDsr = require('../mechanisms/memory.dsr.js');
 const beliefMod = require('../mechanisms/metacognition.belief.js');
 const { close } = require('./helpers.js');
@@ -26,15 +27,24 @@ test('标定 · 稳定度 S：延迟测试没忘时给出"下界"而不是假的
   assert.throws(() => cal.estimateStability({ R0: 0.8, Rt: 0.5, tHours: 0 }), /正的延迟时间/);
 });
 
-test('标定 · 反馈闭环：答对上调 S、答错下调，且单条证据不会甩飞', () => {
+test('标定 · 反馈闭环：答对上调 S、答错下调，且与 src/feedback.js 是同一条规则', () => {
   const up = cal.refineStability(24, { tHours: 48, correct: true });
   const down = cal.refineStability(24, { tHours: 48, correct: false });
   assert.ok(up > 24 && down < 24);
-  assert.ok(up < 24 * 1.2 && down > 24 * 0.8, '单条证据的位移必须有界');
-  // 连续答对会单调升（单条位移已由 w=0.25 限制住）
+  assert.ok(up < 24 * 1.4 && down > 24 * 0.6, '单条证据的位移必须有界（±40%）');
+  // 这里只是别名：真正的实现只有一份，改了那边这边必须跟着变
+  assert.equal(up, feedback.updateStability({ S: 24, R0: 0.8, tHours: 48, correct: true }).S);
+  assert.equal(down, feedback.updateStability({ S: 24, R0: 0.8, tHours: 48, correct: false }).S);
+  // 连续答对会升（增益递减 ⇒ 越往后每步越小，但不会单向漂移到无穷）
   let s = 24;
-  for (let i = 0; i < 5; i += 1) s = cal.refineStability(s, { tHours: 24, correct: true });
-  assert.ok(s > 27 && s < 30, `五次答对后的 S = ${s}（每步只移 3.6%）`);
+  const steps = [];
+  for (let i = 0; i < 5; i += 1) {
+    const before = s;
+    s = cal.refineStability(s, { tHours: 24, correct: true, count: i });
+    steps.push(s / before);
+  }
+  assert.ok(s > 24, `五次答对后 S 应当上升，实际 ${s}`);
+  assert.ok(steps[0] > steps[4], `步长应当递减：${steps.map((x) => x.toFixed(4)).join(' → ')}`);
 });
 
 test('标定 · 复习类型比：再读增益 1 倍、主动回忆 9 倍 ⇒ 系数约 0.125', () => {

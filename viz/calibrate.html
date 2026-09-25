@@ -10,9 +10,9 @@
 
 <header>
   <h1>MindNet <span>参数标定</span></h1>
-  <span class="sub">做几个小实验，把模型参数换成你自己的 —— 不要求精准，跑起来之后再从做题反馈里修</span>
+  <span class="sub">只做「必做」那三件；其余用文献默认值就够，后面靠做题反馈慢慢修</span>
   <span class="spacer"></span>
-  <span class="badge">已完成 <b id="done-count">0</b>/6</span>
+  <span class="badge">必做 <b id="done-core">0</b>/3 · 选做 <b id="done-opt">0</b>/3</span>
   <button id="btn-apply">保存参数（供扩散视图使用）</button>
   <button id="btn-clear" class="danger">清空重来</button>
 </header>
@@ -20,9 +20,25 @@
 <main class="cal-layout">
   <section class="cal-main">
 
-    <details class="task" id="task-t1">
-      <summary><span class="num">1</span><span class="tname">意识容量：一次能拿住几个</span><span class="meta">约 3 分钟 · 估 W_DAR</span></summary>
+    <div class="card intro">
+      <h2>先看这里：哪些要测，哪些别浪费时间</h2>
+      <p class="hint">
+        <b>必做（3 项，约 9 分钟）</b>：<span class="tier core">必做</span> 的都是「模型猜不出、只有你知道」的个人差异 ——
+        你多久走神一次、你的自信准不准、你愿意为一条线索花多少力气。
+      </p>
+      <p class="hint">
+        <b>选做（3 项）</b>：<span class="tier optional">选做</span> 的参数已经有大规模人群默认值
+        （遗忘曲线用 FSRS-4.5 的公开拟合参数，再读/主动回忆的增益比用 Rowland 2014 的元分析结论，
+        记忆广度用 Cowan 的 4±1），<b>不做也行，直接用默认值</b>。
+        真正的修正不在这里，而在你后面每做一道题的反馈里（见页面底部的说明）。
+      </p>
+    </div>
+
+    <details class="task" id="task-t1" data-tier="optional">
+      <summary><span class="num">1</span><span class="tier optional">选做</span><span class="tname">意识容量：一次能拿住几个</span><span class="meta">约 3 分钟 · 估 W_DAR · 默认 4.0</span></summary>
       <div class="body">
+        <p class="hint"><b>可以不做：</b>记忆广度的人群值很稳（Cowan 4±1 个组块），模型默认 W_DAR = 4.0。
+          只有当你明显觉得自己「比一般人能同时拿住更多/更少」时再做这一项。</p>
         <p class="hint">屏幕会依次闪现一串词（每个 1.2 秒），闪完后凭记忆把它们写出来（顺序不限、用空格或逗号分隔）。从 3 个测到 7 个。</p>
         <div class="stage" id="t1-stage"><span class="hint">点「开始」后看屏幕中央。</span></div>
         <div class="row">
@@ -37,10 +53,11 @@
       </div>
     </details>
 
-    <details class="task" id="task-t2">
-      <summary><span class="num">2</span><span class="tname">走神与专注：你在不在</span><span class="meta">3 分钟 · 估 duty / p_off / p_on / τ_vig</span></summary>
+    <details class="task" id="task-t2" data-tier="core">
+      <summary><span class="num">2</span><span class="tier core">必做</span><span class="tname">走神与专注：你在不在</span><span class="meta">3 分钟 · 估 duty / p_off / p_on / τ_vig</span></summary>
       <div class="body">
-        <p class="hint">接下来 3 分钟，做你手头的任意一件事（看题、背单词都行）。<b>每次发现自己走神了，就点一下下面这个按钮。</b>
+        <p class="hint">这条只有你自己知道：模型没法从任何文献里猜出「你多久走神一次」。
+          接下来 3 分钟，做你手头的任意一件事（看题、背单词都行）。<b>每次发现自己走神了，就点一下下面这个按钮。</b>
           系统每 20 秒自动采样一次：这一段里点过 = 走神，没点 = 在。</p>
         <div class="row">
           <button id="t2-start" class="primary big-btn">开始 3 分钟</button>
@@ -52,10 +69,13 @@
       </div>
     </details>
 
-    <details class="task" id="task-t3">
-      <summary><span class="num">3</span><span class="tname">遗忘速度：学一遍 → 过几小时再想</span><span class="meta">两次 · 估 R0 与 S</span></summary>
+    <details class="task" id="task-t3" data-tier="optional">
+      <summary><span class="num">3</span><span class="tier optional">选做</span><span class="tname">遗忘速度：学一遍 → 过几小时再想</span><span class="meta">两次 · 估 R0 与 S · 默认按 FSRS-4.5</span></summary>
       <div class="body">
-        <p class="hint">先学 8 个词（每个看 3 秒），立刻回忆一次（得到 R0）；<b>过几小时后再回来</b>做一次同样的回忆（得到 Rt）。
+        <p class="hint"><b>可以不做：</b>遗忘曲线的形状与量级用 FSRS-4.5 的公开拟合参数（S 初值 = 24 小时 × R0），
+          这就是「正常人的遗忘曲线」。而且 1 道题最多只能提供 1 bit 信息，靠这一项也测不准 S ——
+          不如让模型先用默认值跑，再把每道题的对错喂给它慢慢修（见页面底部）。</p>
+        <p class="hint">如果你还是想做：先学 8 个词（每个看 3 秒），立刻回忆一次（得到 R0）；<b>过几小时后再回来</b>做一次同样的回忆（得到 Rt）。
           两次数据一起就能解出你的记忆稳定度 S。</p>
         <div class="row">
           <label>要学的词（可改成你正在背的）</label>
@@ -76,10 +96,12 @@
       </div>
     </details>
 
-    <details class="task" id="task-t4">
-      <summary><span class="num">4</span><span class="tname">再读 vs 主动回忆</span><span class="meta">两次 · 估 κ_reread_ratio</span></summary>
+    <details class="task" id="task-t4" data-tier="optional">
+      <summary><span class="num">4</span><span class="tier optional">选做</span><span class="tname">再读 vs 主动回忆</span><span class="meta">两次 · 估 κ_reread_ratio · 默认 0.5</span></summary>
       <div class="body">
-        <p class="hint">两组各 5 个词：A 组「再读一遍」，B 组「合上材料主动回忆」。<b>第二天</b>再分别回忆两组，比较留存。
+        <p class="hint"><b>可以不做：</b>「主动回忆比再读有效多少」有元分析结论（Rowland 2014：提取练习 g ≈ 0.5），
+          模型默认把再读的增益算成主动回忆的一半。要跨天做两次，收益不如把时间花在必做项上。</p>
+        <p class="hint">想做的话：两组各 5 个词，A 组「再读一遍」，B 组「合上材料主动回忆」。<b>第二天</b>再分别回忆两组，比较留存。
           差的这一截就是「提取练习」的增益。</p>
         <div class="row"><input type="text" id="t4-words" style="flex:1" value="面包 轮胎 草原 螺丝 茶杯 地图 钟表 竹子 灯塔 钥匙"></div>
         <div class="stage" id="t4-stage"><span class="hint">点「开始两组学习」。</span></div>
@@ -97,9 +119,11 @@
       </div>
     </details>
 
-    <details class="task" id="task-t5">
-      <summary><span class="num">5</span><span class="tname">自信校准：你以为你会吗</span><span class="meta">约 5 分钟 · 估 b0 与 δ</span></summary>
+    <details class="task" id="task-t5" data-tier="core">
+      <summary><span class="num">5</span><span class="tier core">必做</span><span class="tname">自信校准：你以为你会吗</span><span class="meta">约 5 分钟 · 估 b0 与 δ</span></summary>
       <div class="body">
+        <p class="hint">这条也是只有你自己知道：同样「觉得有把握」，有人是真会、有人是错觉。
+          模型的默认偏置 b0 = 1.5 是人群平均值，测过之后它才会知道<b>你的</b>自信该打几折。</p>
         <p class="hint">对 12 个词，每个先凭第一感觉给「如果现在考我这个，我能想起来的把握」打 0–100 分，
           然后立刻自评「刚才真的想起来了吗」。系统同时记录你的反应时间（作为"流畅度"的代理）。</p>
         <div class="row"><button id="t5-start" class="primary">开始 12 项</button><span class="pill" id="t5-progress">0/12</span></div>
@@ -119,10 +143,11 @@
       </div>
     </details>
 
-    <details class="task" id="task-t6">
-      <summary><span class="num">6</span><span class="tname">成本与目标：你愿意花多少</span><span class="meta">1 分钟 · 估 cost_* 与目标留存</span></summary>
+    <details class="task" id="task-t6" data-tier="core">
+      <summary><span class="num">6</span><span class="tier core">必做</span><span class="tname">成本与目标：你愿意花多少</span><span class="meta">1 分钟 · 估 cost_* 与目标留存</span></summary>
       <div class="body">
-        <p class="hint">1 = 很轻松，5 = 很费劲。这些数字决定处方怎么排序（性价比高的排前面）。</p>
+        <p class="hint">1 = 很轻松，5 = 很费劲。这些数字决定处方怎么排序（性价比高的排前面）。
+          这是最便宜、也最影响决策的一项：同样的知识，你愿意花多少力气去换，只有你能回答。</p>
         <div class="selfcheck-row"><label>主动回忆一次</label><input type="range" id="t6-retrieval" class="slider" min="1" max="5" value="3"><span id="t6-retrieval-v">3</span><span class="hint">基准</span></div>
         <div class="selfcheck-row"><label>补一条新连接</label><input type="range" id="t6-link" class="slider" min="1" max="5" value="4"><span id="t6-link-v">4</span><span class="hint"></span></div>
         <div class="selfcheck-row"><label>写下来释放脑子</label><input type="range" id="t6-offload" class="slider" min="1" max="5" value="1"><span id="t6-offload-v">1</span><span class="hint"></span></div>
@@ -146,12 +171,17 @@
     </details>
 
     <div class="card">
-      <h2>反馈闭环 <small>标定只是起点</small></h2>
-      <p class="hint">这些数字不追求精准。真正的修正在后面：每做一道题（答对/答错 + 距上次复习多久）都是一条证据，
-        系统用同一条公式微调稳定度 —— 这就是 <code>refineStability(S, {tHours, correct})</code>。
-        也就是说：<b>你只要照常用，模型会自己往你的真实记忆曲线上靠。</b></p>
+      <h2>反馈闭环 <small>标定只是起点，这里才是真正变准的地方</small></h2>
+      <p class="hint">上面那些数字都不追求精准。<b>真正的修正来自你日常做题</b>：每做一道题（答对/答错 + 距上次复习多久）
+        就是一条证据，系统用<b>预测误差</b>微调这条线索的稳定度 S —— 规则在 <code>src/feedback.js</code>，
+        也可以在扩散视图的「反馈」面板里点着记（那里能直接看到 S 和下次复习时间怎么变）。</p>
+      <p class="hint">为什么是误差而不是「答对就加分」：只要目标留存不是 100%，答对永远比答错多，
+        「答对加分」会让 S 一路漂移、永不收敛；用误差 e = y − p 时，E[e] = 0 恰好等于「模型校准」，
+        所以平衡点就是你的真实记忆强度。</p>
+      <p class="hint">一条诚实的提醒：一道题只有对/错 1 bit 信息，最好情况下 100 道题也只能把 S 定到 ±70%、
+        400 道到 ±30%（这是 Fisher 信息的下界，任何算法都跳不过去）。所以反馈调的是<b>量级</b>，不是小数点。</p>
       <div class="row">
-        <label>演示：当前 S</label><input type="number" id="refine-s" value="24" style="width:90px">
+        <label>试试看：当前 S</label><input type="number" id="refine-s" value="24" style="width:90px">
         <label>距上次复习</label><input type="number" id="refine-t" value="48" style="width:90px"> 小时
         <button id="refine-yes">答对</button>
         <button id="refine-no">答错</button>
@@ -192,8 +222,9 @@
 <script src="../src/model.js"></script>
 <script src="../src/core/rng.js"></script>
 <script src="../src/core/kernel.js"></script>
-<script src="../src/calibration.js"></script>
 <script src="../mechanisms/memory.dsr.js"></script>
+<script src="../src/feedback.js"></script>
+<script src="../src/calibration.js"></script>
 <script src="../mechanisms/metacognition.belief.js"></script>
 <script src="../mechanisms/attention.capacity.js"></script>
 <script src="../mechanisms/attention.ignition.js"></script>

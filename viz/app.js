@@ -97,6 +97,9 @@
     seed: 7,
   };
 
+  // 反馈面板（独立文件）：把「做完一道题」变成一条证据，并把修正写回图
+  const fbPanel = globalThis.MindNetVizFeedback || null;
+
   // ------------------------------------------------------------------ 工具
 
   function setMsg(text, isError) {
@@ -225,6 +228,7 @@
     el.jsonInput.value = JSON.stringify(input, null, 2);
     buildScene();
     updateAll();
+    if (fbPanel) fbPanel.onGraphChanged();   // 新图：把没记过的节点补进反馈账本
     setMsg(`已载入：${graph.size} 个节点 / ${graph.edges.length} 条边`);
     return true;
   }
@@ -302,6 +306,7 @@
     ui.selected = id;
     updateScene();
     updatePanels();
+    if (fbPanel) fbPanel.onSelect();     // 把「距上次复习」填成 现在 − 上次复习
   }
 
   // ------------------------------------------------------------------ 渲染
@@ -640,6 +645,8 @@
   function updateAll() {
     updateScene();
     updatePanels();
+    // 反馈面板跟着「当前现实时间 / 选中节点 / 新的 S」一起刷新
+    if (fbPanel) fbPanel.refresh();
   }
 
   // -------------------------------------------------------------- 扩散控制
@@ -942,6 +949,27 @@
       lines.push(`curve=${el.curveCaption.textContent}`);
       lines.push(`json_output_len=${el.jsonOutput.value.length}`);
       lines.push(`download_ready=${el.downloadLink.style.display !== 'none'}`);
+
+      // 反馈面板：真的走一遍「做错一道题 → S 下降 → 排程变化 → 写回图」
+      if (fbPanel) {
+        select('polar');
+        const node = ui.graph.get_node('polar');
+        const sBefore = node.m && node.m.memory_dsr ? node.m.memory_dsr.S : null;
+        fbPanel.record(false);
+        const sAfter = node.m && node.m.memory_dsr ? node.m.memory_dsr.S : null;
+        const snap = fbPanel.snapshot();
+        lines.push(`fb_events=${snap ? snap.events.length : 0}`);
+        lines.push(`fb_s_before=${sBefore === null ? '—' : sBefore.toFixed(3)}`);
+        lines.push(`fb_s_after=${sAfter === null ? '—' : sAfter.toFixed(3)}`);
+        lines.push(`fb_s_dropped=${sBefore !== null && sAfter !== null && sAfter < sBefore}`);
+        lines.push(`fb_delta_rows=${$('fb-delta').querySelectorAll('tr').length}`);
+        lines.push(`fb_out_len=${$('fb-out').textContent.length}`);
+        lines.push(`fb_accuracy=${$('fb-accuracy').textContent.length > 0}`);
+        fbPanel.record(true);
+        lines.push(`fb_events_after=${fbPanel.snapshot().events.length}`);
+      } else {
+        lines.push('fb_panel=MISSING');
+      }
       lines.push('SELFCHECK_OK');
     } catch (err) {
       lines.push(`SELFCHECK_FAIL ${err && err.message}`);
@@ -1019,10 +1047,25 @@
     if (samples.demo_learning) el.sampleSelect.value = 'demo_learning';
     else if (keys.length) el.sampleSelect.value = keys[0];
 
+    if (fbPanel) {
+      fbPanel.init({
+        getGraph: () => ui.graph,
+        getSelected: () => ui.selected,
+        getNow: () => ui.now,
+        select,
+        // 写回之后：引擎的排程/曲线/控制层都要重算
+        onApplied: () => { updateAll(); },
+        humanTime: (ms) => (ms === null || ms === undefined
+          ? '—'
+          : new Date(ms).toLocaleString('zh-CN', { hour12: false })),
+      });
+    }
+
     el.nowInput.value = ui.now.toFixed(3);
     bind();
     if (keys.length) loadSample();
     else setMsg('没有内置示例，请在下方粘贴输入 JSON 后点「载入文本框」');
+    if (fbPanel) fbPanel.refresh();
     if (/[?&]selfcheck=1/.test(location.search)) runSelfCheck();
   }
 

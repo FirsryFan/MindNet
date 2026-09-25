@@ -55,6 +55,8 @@
       this.visit_count = f.visit_count === undefined ? 0 : f.visit_count;
       this.last_review_time = f.last_review_time === undefined ? null : f.last_review_time;
       this.stm = f.stm === undefined ? 0.0 : f.stm;
+      // 机制命名空间（kernel 会往里写 node.m.<module>；载入时可由 from_object 带回来）
+      this.m = f.m === undefined ? {} : f.m;
     }
 
     static from_object(obj, where) {
@@ -86,6 +88,12 @@
             ? null
             : optionalNumber(obj, 'last_review_time', null, ctx),
         stm: explicit.stm,
+        // 机制自己的慢状态（memory_dsr 的 R0/S/D/Σ…）原样带走。
+        // 不带走的话，"存一次 → 再载入" 会把记忆状态丢回默认值，
+        // 反馈辛苦修出来的 S 就白修了（tools/feedback.js apply 也依赖这条往返）。
+        m: obj.m && typeof obj.m === 'object' && !Array.isArray(obj.m)
+          ? JSON.parse(JSON.stringify(obj.m))
+          : undefined,
       });
       return node;
     }
@@ -111,7 +119,7 @@
     }
 
     to_object(config) {
-      return {
+      const out = {
         id: this.id,
         name: this.name,
         type: this.type,
@@ -127,6 +135,9 @@
         effective_ct: config ? this.ct_of(config) : undefined,
         effective_st: config ? this.st_of(config) : undefined,
       };
+      // 只有真的存了机制状态才带上 m，避免给每份导出都塞一个空对象
+      if (this.m && Object.keys(this.m).length) out.m = JSON.parse(JSON.stringify(this.m));
+      return out;
     }
   }
 
@@ -184,7 +195,16 @@
       if (obj === null || typeof obj !== 'object') {
         throw new MindNetError('图数据必须是对象，形如 {"nodes": [...], "edges": [...]}');
       }
-      const nodes = obj.nodes;
+      // nodes 允许两种形态：数组（输入协议 §8.1），或 {id: 节点} 映射
+      // （引擎 state()/export_state() 导出的就是这个形态 —— 不然"导出再导入"会直接报错）
+      let nodes = obj.nodes;
+      if (nodes && !Array.isArray(nodes) && typeof nodes === 'object') {
+        nodes = Object.keys(nodes).map((id) => {
+          const n = nodes[id];
+          if (n && typeof n === 'object' && n.id === undefined) return Object.assign({ id }, n);
+          return n;
+        });
+      }
       const edges = obj.edges === undefined ? [] : obj.edges;
       if (!Array.isArray(nodes)) {
         throw new MindNetError('图数据缺少 "nodes" 数组');

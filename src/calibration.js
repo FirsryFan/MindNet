@@ -8,7 +8,7 @@
  *   4. 所有公式与 docs/MODEL_v2_MATH.md 的方程**同源**，不另造模型。
  *
  * 标定不追求一次到位：拿到粗略值 → 跑起来 → 用后续每道题的对错继续修正
- * （`refineStability` 就是那条反馈通道）。
+ * （真正的反馈通道是 `src/feedback.js`；这里的 `refineStability` 只是它的兼容别名）。
  */
 (function () {
   'use strict';
@@ -19,6 +19,9 @@
     : (globalThis.MindNet || {});
   const { MindNetError } = deps;
   const memoryDsr = deps.memoryDsr || (isNode ? require('../mechanisms/memory.dsr.js') : null);
+  // 反馈规则只有一份实现（src/feedback.js）；这里拿到它只为做兼容别名，
+  // 循环依赖不存在：feedback.js 只依赖 config.js 与 memory.dsr.js。
+  const feedback = (isNode ? require('./feedback.js') : (globalThis.MindNet || {}).feedback) || null;
 
   const GAMMA = 0.1542;
   const C = Math.pow(0.9, -1 / GAMMA) - 1; // ≈ 0.980346
@@ -60,15 +63,32 @@
 
   /**
    * 反馈闭环：拿到"某道题在 t 小时后答对/答错"这一条新证据后，微调 S。
-   * 答对 ⇒ 至少能撑到这个延迟（S 上调）；答错 ⇒ 没撑到（S 下调）。
-   * 用固定步长的几何平均，避免单条数据把 S 甩飞。
+   *
+   * ⚠ 这里只是**兼容别名**，真正的规则在 `src/feedback.js`（误差驱动 + 递减增益 +
+   *   信息量权重 + 单步上限），不要再往这个函数里塞逻辑，否则又会出现两套反馈规则。
+   *
+   * 为什么必须换掉旧写法：旧规则是"答对 S×1.15、答错 S×0.85、取几何平均"。
+   * 只要目标留存不是 100%（比如 85%），答对的次数永远多于答错 ⇒ S **单调漂移**，
+   * 永远收敛不到你的真实记忆强度；而且它压根没用 tHours。
+   * 新规则用预测误差 e = y − p：E[e] = 0 恰好等价于"模型校准"，
+   * 所以平衡点就是真值（无偏性/收敛性在 test/feedback.test.js 里有专门断言）。
+   *
+   * @param {number} S 当前稳定度（小时）
+   * @param {object} p { tHours, correct, R0?, count? }
+   * @returns {number} 修正后的 S
    */
   function refineStability(S, p) {
-    const s = Math.max(0.1, Number(S) || 24);
-    const t = Math.max(0.01, Number(p.tHours) || 1);
-    const target = p.correct ? s * 1.15 : s * 0.85;
-    const w = 0.25; // 单条证据的权重
-    return round(Math.exp(Math.log(s) * (1 - w) + Math.log(target) * w), 3);
+    if (!feedback || typeof feedback.updateStability !== 'function') {
+      throw new MindNetError('反馈规则未加载：请先加载 src/feedback.js');
+    }
+    const upd = feedback.updateStability({
+      S,
+      R0: p && p.R0 === undefined ? 0.8 : p.R0,
+      tHours: p && p.tHours,
+      correct: !!(p && p.correct),
+      count: p && p.count,
+    });
+    return upd.S;
   }
 
   // ------------------------------------------------------- T4 复习类型的增益

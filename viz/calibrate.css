@@ -12,6 +12,17 @@
 .task .tname { font-weight: 600; }
 .task .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
 .task .body { padding: 0 12px 12px; }
+
+/* 层级标记：必做 = 只有你知道的个人差异；选做 = 已有文献/人群默认值，不做也行 */
+.tier { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.tier.core { border: 1px solid #3d6b46; color: #9fe0a8; }
+.tier.optional { border: 1px dashed var(--line); color: var(--muted); }
+.task[data-tier="optional"] { opacity: .92; }
+.task[data-tier="optional"] > summary { border-left: 3px solid #3a3f4a; }
+.task[data-tier="core"] > summary { border-left: 3px solid #3d6b46; }
+.card.intro { margin-bottom: 12px; }
+.card.intro .hint { margin: 6px 0; line-height: 1.55; }
+.param-table tr.optional td:first-child { color: var(--muted); }
 .task.done { border-color: #3d6b46; }
 .task.done .num { background: #2c4a33; color: #9fe0a8; }
 

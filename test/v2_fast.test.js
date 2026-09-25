@@ -6,7 +6,7 @@ const { Graph, Config, CognitiveModel, createKernel, listMechanisms } = require(
 const { FastEngine } = require('../src/v2/engine.js');
 const { MechanismKernel } = require('../src/core/kernel.js');
 const { PROFILES } = require('../mechanisms/index.js');
-const { makeGraph } = require('./helpers.js');
+const { makeGraph, close } = require('./helpers.js');
 
 const CONFIG = () => new Config();
 
@@ -263,6 +263,38 @@ test('v1.3 · 输出协议与确定性：同 seed 同结果、四字段齐全、
   const peaks = ['unit', 'sine', 'solve'].map((id) => a.engine._peakDrive.get(id) || 0);
   assert.ok(peaks[0] > peaks[1] && peaks[1] > peaks[2], `峰值驱动应随距离递减：${peaks.join(' > ')}`);
   assert.ok(peaks[2] > 0, '末端仍应收到信号（不是零）');
+});
+
+// ------------------------------------------------------------ 存档往返
+test('v2 · 存档往返：导出的状态能原样载回，记忆状态与起点目标都不丢', () => {
+  // 这条曾经是坏的：state() 把 nodes 导成 {id: 节点} 映射，而载入端只认数组；
+  // 而且 Node.from_object 会丢掉机制命名空间 m —— 于是"反馈辛苦修出来的 S"一存一读就没了。
+  const g = makeGraph(
+    [['trig', { ms: 0.9 }], ['sine', { ms: 0.7 }], ['solve', { ms: 0.55 }]],
+    [['trig', 'sine', 0.8], ['sine', 'solve', 0.9]]
+  );
+  const engine = v2Engine(g);
+  engine.start_diffusion(['trig'], ['solve']);
+  for (let i = 0; i < 3; i += 1) engine.step();
+  engine.update_global_memory(100);            // 这一步才会让 memory.dsr 建状态
+  const saved = engine.export_state();
+
+  const withMem = Object.entries(saved.nodes).filter(([, n]) => n.m && n.m.memory_dsr);
+  assert.equal(withMem.length, 3, '三个节点都应当有 memory_dsr 状态');
+
+  const back = Graph.from_object(saved, 0);
+  for (const [id, n] of withMem) {
+    const a = n.m.memory_dsr;
+    const b = back.get_node(id).m.memory_dsr;
+    close(b.S, a.S, 1e-9);
+    close(b.D, a.D, 1e-9);
+    close(b.R0, a.R0, 1e-9);
+  }
+  // 起点 / 目标也要跟着回来，否则导入后不知道这次在验哪条路径
+  const loaded = Graph.load_input(saved, 0);
+  assert.deepEqual(loaded.initial_nodes, ['trig']);
+  assert.deepEqual(loaded.target_nodes, ['solve']);
+  assert.deepEqual(loaded.graph.to_object().nodes[0].m.memory_dsr.S, saved.nodes.trig.m.memory_dsr.S);
 });
 
 // ------------------------------------------------------------ 机制清单

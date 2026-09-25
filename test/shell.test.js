@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const mindnet = require('../src/index.js');
 const { buildOutput } = require('../cli.js');
-const { tmpPath, cleanupTmp } = require('./helpers.js');
+const { close, tmpPath, cleanupTmp } = require('./helpers.js');
 
 const VIZ = path.join(__dirname, '..', 'viz');
 const EXAMPLE = path.join(__dirname, '..', 'example');
@@ -81,6 +81,41 @@ test('可视化壳：内置示例由 example/*.json 生成，且能被引擎载�
     const loaded = mindnet.Graph.load_input(input, 1000);
     assert.ok(loaded.graph.size > 0);
   }
+});
+
+test('可视化壳：反馈面板引用的 DOM 元素都在 index.html 里，且依赖顺序正确', () => {
+  const html = fs.readFileSync(path.join(VIZ, 'index.html'), 'utf8');
+  const panel = fs.readFileSync(path.join(VIZ, 'feedback_panel.js'), 'utf8');
+  // 面板里 $('fb-xxx') 用到的每个 id 都必须在 HTML 里存在（写错就是运行时 null）
+  const ids = new Set([...panel.matchAll(/\$\('([a-z0-9-]+)'\)/g)].map((m) => m[1]));
+  assert.ok(ids.size >= 10, `面板应当引用多个元素，实际 ${ids.size}`);
+  const missing = [...ids].filter((id) => !html.includes(`id="${id}"`));
+  assert.deepEqual(missing, [], `index.html 缺少反馈面板元素：${missing.join(', ')}`);
+  // feedback.js 必须早于 feedback_panel.js；app.js 最后
+  const pos = (s) => html.indexOf(`"${s}"`);
+  assert.ok(pos('../src/feedback.js') >= 0, 'index.html 必须加载 src/feedback.js');
+  assert.ok(pos('../mechanisms/memory.dsr.js') < pos('../src/feedback.js'), 'feedback.js 依赖 memory.dsr');
+  assert.ok(pos('../src/feedback.js') < pos('feedback_panel.js'), 'feedback_panel.js 需要先有 feedback.js');
+  assert.ok(pos('feedback_panel.js') < pos('app.js'), 'app.js 启动时要能拿到面板');
+});
+
+test('可视化壳：反馈面板的账本逻辑与引擎一致（记录 → S 变化 → 写回图）', () => {
+  const { FeedbackLog } = require('../src/feedback.js');
+  const graph = mindnet.Graph.from_object(
+    { nodes: [{ id: 'A', name: 'A', type: 'knowledge', ms: 0.8 }], edges: [] },
+    1000
+  );
+  mindnet.memoryDsr.ensureState(graph.get_node('A'), 0);
+  const log = new FeedbackLog();
+  log.harvest(graph);
+  const before = graph.get_node('A').m.memory_dsr.S;
+  log.record({ node: 'A', tHours: 48, correct: false });
+  const after = log.nodes.A.S;
+  assert.ok(after < before, `答错必须下调 S：${before} → ${after}`);
+  assert.equal(log.applyToGraph(graph), 1);
+  close(graph.get_node('A').m.memory_dsr.S, after, 1e-9);
+  // 面板自检里那两个数字（fb_s_before / fb_s_after）就是这两个值
+  assert.ok(log.record({ node: 'A', tHours: 48, correct: true }).S > after, '答对必须上调 S');
 });
 
 test('CLI：文档示例输出与 §8.2 完全一致', () => {

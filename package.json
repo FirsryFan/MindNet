@@ -8,6 +8,8 @@
     "test": "node --test test/*.test.js",
     "cli": "node cli.js",
     "mechanisms": "node tools/mechanisms.js",
+    "feedback": "node tools/feedback.js",
+    "feedback:demo": "node tools/feedback.js demo --events 400",
     "probe": "node probe/learning_laws.js",
     "probe:v2": "node probe/learning_laws_v2.js",
     "control": "node probe/control_report.js",

@@ -488,6 +488,9 @@
         stop_reason: this._stop_reason,
         availability_last: this._lastRound ? this._lastRound.availability : 1,
         nodes,
+        // 起点/目标也带走：否则"导出 → 再导入"会丢掉这次是在验哪条路径
+        initial_nodes: this._start_order.slice(),
+        target_nodes: this._targets.slice(),
         mechanisms: this.kernel.enabledIds(),
         mechanism_state: this.kernel.serialize(),
         control: this.control_report(),

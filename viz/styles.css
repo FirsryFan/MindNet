@@ -132,6 +132,13 @@ aside .card h2 small { color: var(--muted); font-weight: normal; }
 .msg { font-size: 12px; color: var(--accent); min-height: 18px; }
 .msg.error { color: var(--danger); }
 
+/* 反馈面板：向上/向下用颜色区分，一眼看出这次证据把 S 推哪边去了 */
+#feedback-card td.up { color: var(--conscious); }
+#feedback-card td.down { color: var(--danger); }
+#feedback-card .hint { color: var(--muted); }
+#fb-out { line-height: 1.5; }
+#fb-next-at:empty { display: none; }
+
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: normal; }

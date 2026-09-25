@@ -29,6 +29,19 @@ test('to_object 往返：结构不丢', () => {
   assert.equal(again.edges[0].ls, 0.6);
 });
 
+test('to_object 往返：机制的慢状态 m 不丢（反馈修出来的 S 必须活得下来）', () => {
+  const g = makeGraph([['A', { ms: 0.8 }]]);
+  g.get_node('A').m = { memory_dsr: { R0: 0.8, S: 33.5, D: 4.2, Sigma: 0.8 } };
+  const again = Graph.from_object(g.to_object());
+  assert.equal(again.get_node('A').m.memory_dsr.S, 33.5);
+  // 深拷贝：改副本不能影响原件（否则克隆/载入会串味）
+  again.get_node('A').m.memory_dsr.S = 1;
+  assert.equal(g.get_node('A').m.memory_dsr.S, 33.5);
+  // 没有机制状态时不要凭空塞一个 m，免得每份导出都多一层
+  const plain = makeGraph([['C', {}]]);
+  assert.equal(plain.to_object().nodes[0].m, undefined);
+});
+
 test('载入 §8.1 信封：graph / initial_nodes / target_nodes', () => {
   const input = {
     graph: {
@@ -75,7 +88,16 @@ test('校验：必填字段、重复 id、边端点不存在', () => {
     () => Graph.from_object({ nodes: [{ id: 'A', name: 'A', type: 'knowledge' }], edges: [{ id: 'e', from: 'Z', to: 'A' }] }),
     MindNetError
   );
-  assert.throws(() => Graph.from_object({ nodes: {} }), MindNetError);
+  // nodes 允许两种形态：数组（输入协议）与 {id: 节点} 映射（引擎存档）。
+  // 空映射 = 空图（合法）；真·畸形输入仍必须报错。
+  assert.equal(Graph.from_object({ nodes: {} }).size, 0, '空映射是合法的空图');
+  assert.equal(
+    Graph.from_object({ nodes: { A: { name: 'A', type: 'knowledge' } } }).get_node('A').id,
+    'A',
+    '映射形态缺少 id 时用键补齐'
+  );
+  assert.throws(() => Graph.from_object({ nodes: 'x' }), MindNetError);
+  assert.throws(() => Graph.from_object({ nodes: 42 }), MindNetError);
   assert.throws(() => Graph.from_object({ nodes: [], edges: 'x' }), MindNetError);
   assert.throws(() => Edge.from_object({ from: 'A', to: 'B' }), MindNetError);
   assert.throws(() => Node.from_object({ id: 'A', name: 'A', type: 'knowledge', weight: 'x' }), MindNetError);

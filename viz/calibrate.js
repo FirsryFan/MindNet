@@ -92,18 +92,29 @@
   // ---------------------------------------------------------------- 参数表
 
   const PARAM_ROWS = [
-    ['attention.capacity.W_DAR', '意识容量（能拿住几个）', () => M.attentionCapacity && M.attentionCapacity.DEFAULTS.W_DAR, 't1', 'W_DAR'],
-    ['rhythm.gate.duty', '专注占比（在的时间比例）', () => M.rhythmGate && M.rhythmGate.DEFAULTS.duty, 't2', 'duty'],
-    ['rhythm.gate.p_off', '转入走神概率 /tick', () => M.rhythmGate && M.rhythmGate.DEFAULTS.p_off, 't2', 'p_off'],
-    ['rhythm.gate.p_on', '转回专注概率 /tick', () => M.rhythmGate && M.rhythmGate.DEFAULTS.p_on, 't2', 'p_on'],
-    ['rhythm.gate.tau_vig_minutes', '警觉衰减时间常数（分钟）', () => M.rhythmGate && M.rhythmGate.DEFAULTS.tau_vig_minutes, 't2', 'tau_vig_minutes'],
-    ['memory.dsr.legacy_k', '初始稳定度系数 k（小时）', () => M.memoryDsr && M.memoryDsr.DEFAULTS.legacy_k, 't3', 'legacy_k'],
-    ['memory.dsr.kappa_reread_ratio', '再读增益 / 主动回忆增益', () => M.memoryDsr && M.memoryDsr.DEFAULTS.kappa_reread_ratio, 't4', 'kappa_reread_ratio'],
-    ['metacognition.belief.b0', '自信偏置', () => M.metacognitionBelief && M.metacognitionBelief.DEFAULTS.b0, 't5', 'b0'],
-    ['metacognition.belief.delta', '危险区阈值 δ', () => M.metacognitionBelief && M.metacognitionBelief.DEFAULTS.delta, 't5', 'delta'],
-    ['control.planner.cost_link', '补一条连接的成本', () => M.controlPlanner && M.controlPlanner.DEFAULTS.cost_link, 't6', 'cost_link'],
-    ['control.planner.cost_offload', '写下来的成本', () => M.controlPlanner && M.controlPlanner.DEFAULTS.cost_offload, 't6', 'cost_offload'],
+    // 第五列 = 层级：core 必做 / optional 选做（有文献默认值，不做也行）
+    ['attention.capacity.W_DAR', '意识容量（能拿住几个）', () => M.attentionCapacity && M.attentionCapacity.DEFAULTS.W_DAR, 't1', 'W_DAR', 'optional'],
+    ['rhythm.gate.duty', '专注占比（在的时间比例）', () => M.rhythmGate && M.rhythmGate.DEFAULTS.duty, 't2', 'duty', 'core'],
+    ['rhythm.gate.p_off', '转入走神概率 /tick', () => M.rhythmGate && M.rhythmGate.DEFAULTS.p_off, 't2', 'p_off', 'core'],
+    ['rhythm.gate.p_on', '转回专注概率 /tick', () => M.rhythmGate && M.rhythmGate.DEFAULTS.p_on, 't2', 'p_on', 'core'],
+    ['rhythm.gate.tau_vig_minutes', '警觉衰减时间常数（分钟）', () => M.rhythmGate && M.rhythmGate.DEFAULTS.tau_vig_minutes, 't2', 'tau_vig_minutes', 'core'],
+    ['memory.dsr.legacy_k', '初始稳定度系数 k（小时）', () => M.memoryDsr && M.memoryDsr.DEFAULTS.legacy_k, 't3', 'legacy_k', 'optional'],
+    ['memory.dsr.kappa_reread_ratio', '再读增益 / 主动回忆增益', () => M.memoryDsr && M.memoryDsr.DEFAULTS.kappa_reread_ratio, 't4', 'kappa_reread_ratio', 'optional'],
+    ['metacognition.belief.b0', '自信偏置', () => M.metacognitionBelief && M.metacognitionBelief.DEFAULTS.b0, 't5', 'b0', 'core'],
+    ['metacognition.belief.delta', '危险区阈值 δ', () => M.metacognitionBelief && M.metacognitionBelief.DEFAULTS.delta, 't5', 'delta', 'core'],
+    ['control.planner.cost_link', '补一条连接的成本', () => M.controlPlanner && M.controlPlanner.DEFAULTS.cost_link, 't6', 'cost_link', 'core'],
+    ['control.planner.cost_offload', '写下来的成本', () => M.controlPlanner && M.controlPlanner.DEFAULTS.cost_offload, 't6', 'cost_offload', 'core'],
   ];
+
+  /** 任务是否完成（用于顶部「必做 x/3 · 选做 y/3」） */
+  const TASK_DONE = {
+    t1: () => state.t1.W_DAR !== undefined,
+    t2: () => !!state.t2.estimate,
+    t3: () => state.t3.S !== null,
+    t4: () => state.t4.ratio !== null,
+    t5: () => !!state.t5.estimate,
+    t6: () => !!state.t6,
+  };
 
   /** 汇总所有实验产出的估计值 */
   function estimates() {
@@ -128,10 +139,11 @@
     let done = 0;
     const seen = new Set();
     for (const row of PARAM_ROWS) {
-      const [key, label, defFn, task, field] = row;
+      const [key, label, defFn, task, field, tier] = row;
       const val = field === 'legacy_k' ? e.legacy_k : e[field];
       const def = defFn();
       const tr = document.createElement('tr');
+      if (tier === 'optional') tr.className = 'optional';
       const td1 = document.createElement('td');
       td1.textContent = label;
       td1.title = key;
@@ -139,7 +151,7 @@
       td2.textContent = def === undefined || def === null ? '—' : String(def);
       const td3 = document.createElement('td');
       if (val === undefined || val === null) {
-        td3.textContent = '待做';
+        td3.textContent = tier === 'optional' ? '用默认' : '待做';
         td3.className = 'pending';
       } else {
         td3.textContent = fmt(val, 3);
@@ -147,12 +159,22 @@
         if (!seen.has(field)) { done += 1; seen.add(field); }
       }
       const td4 = document.createElement('td');
-      td4.innerHTML = `<span class="pill ${val === undefined || val === null ? 'wait' : 'ok'}">T${task.slice(1)}</span>`;
+      td4.innerHTML = `<span class="pill ${val === undefined || val === null ? 'wait' : 'ok'}">T${task.slice(1)}`
+        + `${tier === 'optional' ? '·选做' : ''}</span>`;
       tr.append(td1, td2, td3, td4);
       body.appendChild(tr);
     }
-    $('done-count').textContent = String([state.t1.W_DAR !== undefined, !!state.t2.estimate, state.t3.S !== null,
-      state.t4.ratio !== null, !!state.t5.estimate, !!state.t6].filter(Boolean).length);
+    // 顶部进度：必做与选做分开数 —— 选做做不做都不影响模型能跑
+    const tiers = { core: 0, optional: 0 };
+    const total = { core: 0, optional: 0 };
+    for (const task of document.querySelectorAll('details.task')) {
+      const tier = task.dataset.tier === 'optional' ? 'optional' : 'core';
+      const id = task.id.replace('task-', '');
+      total[tier] += 1;
+      if (TASK_DONE[id] && TASK_DONE[id]()) tiers[tier] += 1;
+    }
+    $('done-core').textContent = `${tiers.core}/${total.core}`;
+    $('done-opt').textContent = `${tiers.optional}/${total.optional}`;
 
     const effects = cal.describeEffects(e);
     const ul = $('effects');
@@ -584,12 +606,22 @@
   // -------------------------------------------------------- 反馈闭环小演示
 
   (function initRefine() {
+    const fb = M && M.feedback;
     function run(correct) {
       const s = Number($('refine-s').value);
       const t = Number($('refine-t').value);
-      const next = cal.refineStability(s, { tHours: t, correct });
-      $('refine-out').textContent = `${correct ? '答对' : '答错'} ⇒ S：${fmt(s, 1)} → ${fmt(next, 1)} 小时（单条证据只移动约 4%）`;
-      $('refine-s').value = String(next);
+      if (!fb) {
+        $('refine-out').textContent = '反馈模块未加载：请确认 ../src/feedback.js 路径正确。';
+        return;
+      }
+      // 演示用 R0 = 0.8：p 是模型"考前"预测你能想起来的概率
+      const upd = fb.updateStability({ S: s, R0: 0.8, tHours: t, correct });
+      const pct = (upd.delta_ratio - 1) * 100;
+      $('refine-out').textContent =
+        `模型考前预测 p = ${fmt(upd.R_at_test * 100, 0)}% ⇒ ${correct ? '答对' : '答错'}：`
+        + `S ${fmt(s, 1)} → ${fmt(upd.S, 1)} 小时（${pct >= 0 ? '+' : ''}${fmt(pct, 1)}%，`
+        + `这条证据的权重 ${fmt(upd.weight, 2)}、本次增益 ${fmt(upd.gain, 3)}）`;
+      $('refine-s').value = String(upd.S);
     }
     $('refine-yes').addEventListener('click', () => run(true));
     $('refine-no').addEventListener('click', () => run(false));
@@ -644,9 +676,21 @@
     try {
       lines.push(`param_rows=${document.querySelectorAll('#param-body tr').length}`);
       lines.push(`tasks=${document.querySelectorAll('.task').length}`);
+      // 分层：必做 / 选做必须都在，且进度分开数
+      lines.push(`tier_core=${document.querySelectorAll('.task[data-tier="core"]').length}`);
+      lines.push(`tier_optional=${document.querySelectorAll('.task[data-tier="optional"]').length}`);
+      lines.push(`done_core=${$('done-core').textContent}`);
+      lines.push(`done_opt=${$('done-opt').textContent}`);
+      lines.push(`optional_param_rows=${document.querySelectorAll('#param-body tr.optional').length}`);
       const overridesText = $('overrides').value;
       const parsed = JSON.parse(overridesText);
       lines.push(`overrides_keys=${Object.keys(parsed).length}`);
+      // 反馈小程序：真的点一下"答对"，确认走的是 src/feedback.js
+      $('refine-s').value = '24';
+      $('refine-t').value = '48';
+      $('refine-yes').click();
+      lines.push(`refine_out=${$('refine-out').textContent}`);
+      lines.push(`refine_s_after=${$('refine-s').value}`);
       // 估计器端到端：造一组数据跑一遍，确认能产出参数
       const cap = cal.estimateCapacity([{ n: 3, accuracy: 1 }, { n: 4, accuracy: 0.9 }, { n: 5, accuracy: 0.6 }, { n: 6, accuracy: 0.3 }]);
       const rhy = cal.estimateRhythm(Array.from({ length: 30 }, (_, i) => ({ tMinutes: i * 0.5, focused: i % 3 !== 0 })));

@@ -57,17 +57,26 @@
   - `fed8db8` v1.3 快层（容量竞争、入边求和、分流方程、概率点火、节律门控、目标偏置）
   - `9c07459` **v2.0 控制层**（元认知自信度、卡点诊断、处方规划器 + 反事实预测）
   - `d7ad57b` **参数标定页 + 可视化壳接入 v2**（六个可亲手做的实验、估计器、壳默认跑 v2 并显示诊断/处方）
-- 仓库内容：62 个文件（含 `.gitattributes` 统一 LF、`.gitignore`），零第三方依赖
-- 标定（用户可亲自做）：`viz/calibrate.html` —— T1 即刻广度→`W_DAR`；T2 经验取样→`duty/p_off/p_on/τ_vig`；
-  T3 学习+延迟回忆→`R0/S/legacy_k`；T4 再读 vs 主动回忆→`kappa_reread_ratio`；T5 自信校准→`b0/δ`；
-  T6 成本与目标→`cost_*`/目标留存。进度存 localStorage，一键保存到本机供扩散视图使用；
-  后续每道题的对错通过 `refineStability` 继续微调 `S`（协议见 `docs/CALIBRATION.md`）
+  - `ff5ec6f` 记录同步（`docs/MEMORY_RECORD.md`）
+  - *（本轮，待提交）* **反馈微调落地**：`src/feedback.js`（误差驱动 + 递减增益 + 信息下界）、
+    `tools/feedback.js`（init/add/report/suggest/apply/demo）、壳里的「反馈」面板、
+    标定页分层（必做 3 / 选做 3）、存档往返修复（`m` 与 `{id:节点}` 映射）、`docs/FEEDBACK.md`
+- 仓库内容：66 个文件（含 `.gitattributes` 统一 LF、`.gitignore`），零第三方依赖
+- 标定（用户可亲自做）：`viz/calibrate.html` —— **必做**：T2 经验取样→`duty/p_off/p_on/τ_vig`；
+  T5 自信校准→`b0/δ`；T6 成本与目标→`cost_*`/目标留存。
+  **选做（已有文献默认值，不做也行）**：T1 即刻广度→`W_DAR`（默认 4.0）；T3 学习+延迟回忆→`R0/S/legacy_k`（默认 24h）；
+  T4 再读 vs 主动回忆→`kappa_reread_ratio`（默认 0.5）。进度存 localStorage，一键保存到本机供扩散视图使用
+- 反馈（真正让它变准的地方）：`src/feedback.js` 用**预测误差** `e = y − p` 修 `S`
+  （`S' = S·exp(gain·e·u)`，递减增益、单步 ±40% 上限）；`E[e]=0` ⇔ 校准，所以无漂移。
+  壳里点着用（`viz/index.html` 右侧「反馈」卡片：答对/答错 → 看 S 与下次复习时间 → 写回图），
+  命令行 `node tools/feedback.js`；协议与诚实边界见 `docs/FEEDBACK.md`
+  （**一道题只有 1 bit**：Fisher 信息上限 `I≈0.0359` ⇒ 100 条到 ±70%、400 条到 ±30%，实测 RMS/下界 = 0.91~0.99）
 - 已实现（11 个机制模块、56 条验收断言）：
   - `src/core/` 机制内核（15 个槽位、不变量守卫、共享/命名空间状态、验收执行）
   - `src/v2/engine.js` 快层引擎（每轮管线 + 诊断事实表 + 克隆 + 控制层报告）
   - `mechanisms/`：记忆（R0/S/Σ、三档复习、失败证据老化、排程反解）、激活（分流方程精确积分 + 亚阈累积）、容量（DAR 4 + 焦点 1）、点火（概率 + 可播种随机）、节律（占空比 / 走神马尔可夫 / θ + 警觉衰减 + 负荷自适应节拍）、目标偏置、元认知自信度、卡点诊断、处方规划器、侧抑制（实验性）、v1.1 兼容包
-- 已验证：`npm test` **78/78**；`npm run mechanisms -- --check` **11 模块 56 条断言全过**；`npm run math` 7 组全过；`npm run probe:v2` **学习规律 1–5 全部翻转**；`npm run control` 输出诊断 + 处方 + 反事实预测；差分等价：`FastEngine + legacy_v1` 在链/菱形/扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`
-- 未实现：可视化壳接 v2；参数标定（v1.3/v2.0 的十余个参数全部 `[未标定]`）；侧抑制默认关闭；睡眠巩固的具体量级
+- 已验证：`npm test` **109/109**；`npm run mechanisms -- --check` **11 模块 56 条断言全过**；`npm run math` 7 组全过；`npm run probe:v2` **学习规律 1–5 全部翻转**；`npm run control` 输出诊断 + 处方 + 反事实预测；差分等价：`FastEngine + legacy_v1` 在链/菱形/扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`；存档往返：`export_state()` 导出再载入后 10/10 节点的 `S/D/R0/Σ` 完全一致；两个 viz 页面在 Edge 无头 `file://` 下 `SELFCHECK_OK` / `CALIBRATE_OK`（壳的自检里包含一次真实的"记错题 → S 下降 → 写回图"）
+- 未实现：v1.3/v2.0 的十余个参数仍 `[未标定]`（但反馈那一组的方向由无偏性定死，风险小）；侧抑制默认关闭；睡眠巩固的具体量级；反馈的分层贝叶斯与自动选题
 
 ---
 
