@@ -75,8 +75,36 @@
   - `src/core/` 机制内核（15 个槽位、不变量守卫、共享/命名空间状态、验收执行）
   - `src/v2/engine.js` 快层引擎（每轮管线 + 诊断事实表 + 克隆 + 控制层报告）
   - `mechanisms/`：记忆（R0/S/Σ、三档复习、失败证据老化、排程反解）、激活（分流方程精确积分 + 亚阈累积）、容量（DAR 4 + 焦点 1）、点火（概率 + 可播种随机）、节律（占空比 / 走神马尔可夫 / θ + 警觉衰减 + 负荷自适应节拍）、目标偏置、元认知自信度、卡点诊断、处方规划器、侧抑制（实验性）、v1.1 兼容包
-- 已验证：`npm test` **109/109**；`npm run mechanisms -- --check` **11 模块 56 条断言全过**；`npm run math` 7 组全过；`npm run probe:v2` **学习规律 1–5 全部翻转**；`npm run control` 输出诊断 + 处方 + 反事实预测；差分等价：`FastEngine + legacy_v1` 在链/菱形/扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`；存档往返：`export_state()` 导出再载入后 10/10 节点的 `S/D/R0/Σ` 完全一致；两个 viz 页面在 Edge 无头 `file://` 下 `SELFCHECK_OK` / `CALIBRATE_OK`（壳的自检里包含一次真实的"记错题 → S 下降 → 写回图"）
+- 已验证：`npm test` **129/129**；`npm run mechanisms -- --check` **11 模块 56 条断言全过**；`npm run math` 7 组全过；`npm run probe:v2` **学习规律 1–5 全部翻转**；`npm run control` 输出诊断 + 处方 + 反事实预测；差分等价：`FastEngine + legacy_v1` 在链/菱形/扇出三张图上逐轮复现 v1.1 的 `state` 与 `al`；存档往返：`export_state()` 导出再载入后 10/10 节点的 `S/D/R0/Σ` 完全一致；两个 viz 页面在 Edge 无头 `file://` 下 `SELFCHECK_OK` / `CALIBRATE_OK`；一致性样例 `npm run conformance -- --check` 通过（43+1 条，防过期）
 - 未实现：v1.3/v2.0 的十余个参数仍 `[未标定]`（但反馈那一组的方向由无偏性定死，风险小）；侧抑制默认关闭；睡眠巩固的具体量级；反馈的分层贝叶斯与自动选题
+- 边界（2026-09-25 明确）：**不做**题目提取（照片→结构化）、**不做**下游场景（搜题/评价/建议/计划/精华提取）；
+  MindNet 只吃 `mindnet.run/1`、吐 `mindnet.result/1`（含 trace 与存档）；转写规程给上游 AI：`docs/TRANSCRIBE.md`
+- 分工定案：每条线索的 `S` 由**机制**独占（`mechanisms/memory.dsr.js`）；
+  `src/feedback.js` 只做体检（`compareWithGraph`）与参数建议（`suggestOverrides`），**不再写回 S**
+
+---
+
+## 3.5 外部消费方：Furnace（Flutter）接口对齐（2026-09-25）
+
+- **对方**：Furnace（Flutter，Windows + Android；仓库 `FirsryFan/Furnace`，本机
+  `E:\FirsryOS\Memory\一THREADRIPPER一\class-productivity`），由另一个 agent 负责。
+  它对 MindNet **只读**；接口文档在它那边：`docs/MINDNET_CONTRACT.md`。
+- **它要什么**：① 判断一份题目草稿对该用户的"质量/难度"（发展区 vs 死角）；② 解释标签树上的扩散。
+- **我给的回应**（写在它那份文档 §6，基于 MindNet commit `c624884`）：
+  - 事实纠正：`src/` 已 12 文件 3942 行；**`src/index.js` 与 `mechanisms/index.js` 是 Node-only**，
+    其余模块双端；对外接口还多了 `mindnet.run/1`、`tools/io_check.js`、`conformance/`。
+  - 移植分两层：**tierA 记忆层**（纯数学/无随机，约 150 行 Dart；对方已有 FSRS，
+    只需 ×24 小时换算 + 补 `R0/Σ/复习类型` —— 曲线常数完全一致：`γ=0.1542`、`c=0.980346`）；
+    **tierB 快层**（状态机，约 400–600 行；建议先掐掉随机源：`T_ign=0`、不装 `rhythm.gate`）。
+  - 对拍：`conformance/mindnet_vectors.json`（tierA 43 条 + tierB 1 条逐轮快照，
+    由实现生成、`--check` 防过期；容差 rel 1e-12，集合/枚举逐位相等）。
+  - 关键澄清：模型**不认 `mastery` 标量**（只认事件或 `R0/S/Σ/D` 初值）；`ms` 是导出量不能反复写回；
+    `grade` 只影响难度 `D`，不改变同一次复习的 `S`；标签树的父子边是"包含"语义，
+    MindNet 的边是"线索"语义（严格有向，不自动反向）；边权 `ls` 目前**没有标定来源**。
+  - `DiffusionBoost`（对方的 BFS+衰减，无向、d≤2 加权）与 MindNet 扩散有七处实质差异；
+    建议**短期分工（并标注为非模型量）、长期取代**。
+  - 版本策略：请钉 `c624884` 快照；契约是协议字符串 + conformance 样例，不是 npm 版本号。
+- **待对方提供**（可选，用于验证）：脱敏标签树样例 + 一批真实对错记录。
 
 ---
 
