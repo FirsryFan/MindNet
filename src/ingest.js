@@ -2,7 +2,7 @@
  * MindNet 材料转化层：`mindnet.material/1` → 知识图补丁 + 卡片 + `mindnet.run/1` 请求
  *
  * 这一层是**确定性纯函数**：同一个信封进去，同样的图/卡/请求出来。
- * 它不读照片、不调 AI、不猜内容 —— 那些都在上游（docs/MARKS.md 的记号 + docs/INGEST.md §5 的提示词）。
+ * 它不读照片、不调 AI、不猜内容 —— 那些都在上游（docs/INGEST.md §1 的记号 + docs/INGEST.md §5 的提示词）。
  *
  * 三条设计原则（docs/INGEST.md §7）：
  *   1. 原始/印刷材料是权威，手写只用于消歧（`corrected` / `conflict` 由上游标好，本层只照办）；
@@ -256,7 +256,7 @@
       if (needsMargin && !hasText(raw.margin_note) && !fromLine && !byDot) {
         fail(`${at}（${written}）缺少 margin_note：`
           + '页边照抄的那一份必须给出来；或者显式说明这行只有一处要记（inferred_from_line）'
-          + '／你是用点子标的（marked_by: "dot"）—— 见 docs/MARKS.md §3.2');
+          + '／你是用点子标的（marked_by: "dot"）—— 见 docs/INGEST.md §1 §3.2');
       }
       if (role === 'item' && !hasText(raw.context)) {
         fail(`${at}（${written}）缺少 context：正文里的那一句是例句来源`);

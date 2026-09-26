@@ -2,7 +2,7 @@
   "protocol": "mindnet.conformance/1",
   "generated_from": {
     "repo": "https://github.com/FirsryFan/MindNet",
-    "commit": "2303c60db862de49f9a3eae0b20a55eb08bd42c8",
+    "commit": "ace605d9778e8641957c570c1e58049ca82e4a01",
     "package_version": "2.0.0-alpha.1",
     "generator": "tools/conformance.js"
   },

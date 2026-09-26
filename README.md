@@ -1,6 +1,6 @@
 # MindNet —— 认知模型引擎（独立组件）
 
-按 `docs/DESIGN_v1.1.md` 实现的**独立、不依赖 AI、不依赖网络**的认知模型引擎，外加一层可视化壳。
+按 `docs/archive/DESIGN_v1.1.md` 实现的**独立、不依赖 AI、不依赖网络**的认知模型引擎，外加一层可视化壳。
 它只做一件事：**给一张认知图 + 起点，跑同步状态扩散，输出知识贡献 KC（Gap / Penalty）与目标激活情况。**
 
 ---
@@ -63,14 +63,17 @@ console.log(result.kc, result.target_steps, result.final_states);
 
 ```
 mindnet/
-├─ docs/                    设计文档（七份）
-│  ├─ DESIGN_v1.1.md        v1.1 定稿（旧语义基线）
-│  ├─ MODEL_v2_MATH.md      **v2 数学模型完整规范**：状态空间、全部方程、参数表、可证伪预测、假设登记
-│  ├─ CALIBRATION.md        **标定协议**：必做 3 项 / 选做 3 项、估什么参数、精度边界
-│  ├─ FEEDBACK.md           **反馈微调协议**：更新律、为什么用预测误差、1 bit 信息下界、三种用法
-│  ├─ DESIGN_v2_PROPOSAL.md v2 提案：脑/学生模仿、九处机制缺口、三层架构、验收标准
-│  ├─ PLUGIN_ARCHITECTURE.md 机制插件化：槽位、模块 manifest、不变量守卫、AI 插入流程
-│  └─ MECHANISM_CATALOG.md  机制目录：8 层 50+ 条候选机制（带文献依据 / 数学形式 / 优先级）
+├─ docs/                    文档（先看 docs/README.md 的索引）
+│  ├─ README.md             **文档索引**：按"我要用它 / 我要改它 / 历史归档"分类
+│  ├─ PROMPT.md             **给对话版 AI 的提示词**（拍照提取：复制 → 发照片 → 【输出到 MindNet】）
+│  ├─ INGEST.md             输入一·材料：记号约定、清单格式、提取规则、转化为模型输入
+│  ├─ IO_PROTOCOL.md        输入二·协议：mindnet.run/1 与 mindnet.result/1、存档与回退、S 的归属
+│  ├─ MODEL_v2_MATH.md      **模型的数学**：状态空间、全部方程、参数表、可证伪预测
+│  ├─ CALIBRATION.md        标定协议：必做 3 项 / 选做 3 项、估什么参数、精度边界
+│  ├─ FEEDBACK.md           反馈：体检对照（机制 S vs 账本估计）、参数建议、1 bit 信息下界
+│  ├─ PLUGIN_ARCHITECTURE.md 机制插件化：槽位、模块 manifest、不变量守卫
+│  ├─ MEMORY_RECORD.md      跨会话记录（不是使用说明）
+│  └─ archive/              历史归档：v1.1 定稿、v2 提案、机制目录、旧转写规程
 ├─ src/                     内核、v1.1 引擎与 v2 快层引擎（无第三方依赖）
 │  ├─ core/rng.js           可播种 PRNG（确定性不变量 I1）
 │  ├─ core/kernel.js        机制内核：15 个槽位调度、不变量守卫、共享/命名空间状态、验收执行
@@ -139,17 +142,17 @@ T6 成本 1 分钟）→ 点「保存参数」→ 打开 `viz/index.html`，模�
 
 **上游怎么把「我做了什么」喂进来**（照片 → 结构化 → 跑模型）：本模块吃 `mindnet.run/1` 请求、
 吐 `mindnet.result/1`（含 `trace` 完整运作过程 + append-only 存档）。契约见 `docs/IO_PROTOCOL.md`，
-给 AI 用的转写规程见 `docs/TRANSCRIBE.md`，命令行 `node tools/io_run.js --request … --graph …`。
+给 AI 用的转写规程见 `docs/PROMPT.md`，命令行 `node tools/io_run.js --request … --graph …`。
 
-**上游怎么把「我要积累什么」喂进来**（手写记号 → 拍照 → 卡片 + 知识图）：
-记号约定见 `docs/MARKS.md`（页边三件套：范围线 + 类型字母 + 短项照抄），
-提取与转化流水线见 `docs/INGEST.md`，命令行
-`node tools/ingest.js --material … --out-dir out/`（一次产出卡片 / Anki TSV / 卡片模板 /
-TTS 清单 / 图补丁 / 请求）。示例：`example/material/en_listening_2026-09-25.json`。
+**上游怎么把「我要积累什么」喂进来**（手写记号 → 拍照 → 清单 → 模型输入）：
+记号约定与提取/转化规则见 `docs/INGEST.md`；
+**在手机或网页版 AI 里拍照提取时，复制 `docs/PROMPT.md` 里的提示词**
+（粘贴 → 发照片 → 说【输出到 MindNet】→ 复制它给的 JSON）。
+命令行：`node tools/ingest.js --material … --out-dir out/`。
+示例清单：`example/material/en_listening_2026-09-25.json`。
 
 **每个数的归属**（避免两条规则同时改一个量）：`S` 只由机制（`mechanisms/memory.dsr.js`）改；
 反馈模块只观测与建议参数 —— 定案写在 `docs/IO_PROTOCOL.md` §6。
-**排程也只能有一个主人**（Anki 与 MindNet 不要同时排程）—— 见 `docs/INGEST.md` §4。
 
 **v2 怎么用（五行）**
 

@@ -52,7 +52,7 @@
     phenomenon: [
       '旧模型的行为：取最大值、硬阈值、永久亮着、容量无限 —— 作为可复现的兼容基线',
     ],
-    evidence: [{ grade: 'local', note: 'docs/DESIGN_v1.1.md §5.2（v1.1 的每轮更新规则）' }],
+    evidence: [{ grade: 'local', note: 'docs/archive/DESIGN_v1.1.md §5.2（v1.1 的每轮更新规则）' }],
     params: [],
     reads: ['ms', 'state', 'ct', 'st'],
     writes: [],

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 请求自检：只校验、不执行（对应 docs/TRANSCRIBE.md §7）
+ * 请求自检：只校验、不执行（对应 docs/INGEST.md §3.2 与 docs/PROMPT.md）
  *
  * 用途：上游 AI 产出的 `mindnet.run/1` 先过这一关 —— 报错说人话，
  * 并预告"这份请求将会落到哪些机制路径"。**它不改任何状态**，所以可以反复迭代到通过。
@@ -118,7 +118,7 @@ function main(argv) {
       lines.push(`图里可用的节点 id（${built.nodeIds.length} 个）：`);
       lines.push(`  ${built.nodeIds.join(', ')}`);
       lines.push('');
-      lines.push('对照 docs/TRANSCRIBE.md §4 的常见坑逐条检查，改完再跑一次本命令。');
+      lines.push('对照 docs/INGEST.md §3.2「AI 不许做的事」与 docs/PROMPT.md 的自检清单逐条检查，改完再跑一次本命令。');
       process.stdout.write(`${lines.join('\n')}\n`);
       return 1;
     }
