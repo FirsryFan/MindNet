@@ -12,6 +12,7 @@
     "feedback:demo": "node tools/feedback.js demo --events 400",
     "io": "node tools/io_run.js",
     "io:check": "node tools/io_check.js",
+    "ingest": "node tools/ingest.js",
     "conformance": "node tools/conformance.js",
     "probe": "node probe/learning_laws.js",
     "probe:v2": "node probe/learning_laws_v2.js",

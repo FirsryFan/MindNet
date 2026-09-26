@@ -1,0 +1,77 @@
+{
+  "protocol": "mindnet.material/1",
+  "batch_id": "en-listen-2026-09-25-a",
+  "source": {
+    "kind": "photo",
+    "refs": ["dsc_0101.jpg"],
+    "material": "BBC 6 Minute English · ep.2609 · 第 3 段",
+    "captured_at": "2026-09-25T21:40:00+08:00"
+  },
+  "topic": "travel",
+  "language": "en",
+  "items": [
+    {
+      "id": "m1",
+      "mark": "W",
+      "text": "resilient",
+      "margin_note": "resilient",
+      "meaning": "有韧性的、能扛事的",
+      "meaning_source": "ai",
+      "ipa": "/rɪˈzɪliənt/",
+      "context": "She was remarkably resilient in the face of one setback after another.",
+      "page": 1,
+      "line": 12,
+      "modified": ["star"]
+    },
+    {
+      "id": "m2",
+      "mark": "C",
+      "text": "get the hang of",
+      "margin_note": "get the hang of",
+      "meaning": "摸到门道、上手",
+      "meaning_source": "ai",
+      "context": "It took me a while to get the hang of it.",
+      "page": 1,
+      "line": 15,
+      "modified": ["star", "produce"]
+    },
+    {
+      "id": "m3",
+      "mark": "S",
+      "text": "It took me a while to get the hang of it.",
+      "page": 1,
+      "lines": [15, 16],
+      "contains": ["m2"],
+      "produce": true
+    },
+    {
+      "id": "m4",
+      "mark": "T",
+      "text": "When I first moved abroad, everything felt like a puzzle. Ordering coffee, reading a timetable, even saying hello had a rhythm I could not hear yet. It took me a while to get the hang of it, but once I stopped translating in my head, the city started to make sense.",
+      "page": 1,
+      "lines": [18, 21],
+      "contains": ["m2", "m1"],
+      "questions": ["作者一开始为什么觉得一切像谜题？", "转折点是什么？"]
+    },
+    {
+      "id": "m5",
+      "mark": "N",
+      "text": "没听清 introduced 后面那个词，听着像 'a-plows'",
+      "margin_note": "N? introduced ... a-plows",
+      "page": 1,
+      "line": 20
+    },
+    {
+      "id": "m6",
+      "mark": "W",
+      "text": "timetable",
+      "margin_note": "timetable",
+      "meaning": "时刻表",
+      "meaning_source": "user",
+      "context": "reading a timetable, even saying hello had a rhythm",
+      "page": 1,
+      "line": 19,
+      "modified": ["exception"]
+    }
+  ]
+}

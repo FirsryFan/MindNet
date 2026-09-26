@@ -127,7 +127,10 @@
       if (!Number.isFinite(s) || s < 0 || Math.floor(s) !== s) fail('run 请求的 steps 必须是 ≥0 的整数');
     }
 
-    // 校验用一份"影子状态"：确认每条动作的时间基都能解析，又不产生重复的 assumptions
+    // 校验用一份"影子状态"：确认每条动作的时间基都能解析，又不产生重复的 assumptions。
+    // 同时维护一份"影子图"（下面 shadowNodes/shadowEdges）：校验按与执行相同的顺序走，
+    // 把本批次**将要新建**的节点/边也算作"已存在" —— 否则「同一份请求里先建节点、
+    // 再把它们设为目标」会被误判成"目标不在图里"（材料批量入库的正常形态，实测踩到过）。
     const shadow = { anchor: null, assumptions: [] };
     if (request.time && request.time.model_hours !== undefined) {
       const h = Number(request.time.model_hours);
@@ -137,7 +140,9 @@
       shadow.anchor = { model_hours: h, wall_ms: wallMs, wall: request.time.wall || null };
     }
 
-    const has = (id) => engine.graph.has_node(id);
+    const shadowNodes = new Set(engine.graph.nodes.keys());
+    const shadowEdges = new Set(engine.graph.edges.map((e) => e.id));
+    const has = (id) => shadowNodes.has(id);
     const seen = new Map();
     request.actions.forEach((action, index) => {
       if (!action || typeof action !== 'object') fail(`第 ${index + 1} 条 action 不是对象`);
@@ -168,8 +173,26 @@
         const hasNode = action.node && typeof action.node === 'object';
         const hasEdge = action.edge && typeof action.edge === 'object';
         if (!hasNode && !hasEdge) fail(`第 ${index + 1} 条 action（knowledge）要么给 node（新知识点）要么给 edge（新连接）`);
-        if (hasEdge && (!action.edge.from || !action.edge.to)) {
-          fail(`第 ${index + 1} 条 action（knowledge）的 edge 缺少 from / to`);
+        if (hasNode) {
+          const id = action.node.id;
+          if (id !== undefined && id !== null) {
+            if (typeof id !== 'string' || !id) fail(`第 ${index + 1} 条 action（knowledge）的 node.id 必须是非空字符串`);
+            if (shadowNodes.has(id)) {
+              fail(`第 ${index + 1} 条 action（knowledge）要建的节点 "${id}" 已经存在`
+                + '（材料入库应当幂等：不必重复建，直接引用即可）');
+            }
+            shadowNodes.add(id);
+          }
+        } else {
+          const e = action.edge;
+          if (!e.from || !e.to) fail(`第 ${index + 1} 条 action（knowledge）的 edge 缺少 from / to`);
+          if (!has(e.from)) fail(`第 ${index + 1} 条 action（knowledge）的边起点 "${e.from}" 不在图里（也不在本批次新建的节点里）`);
+          if (!has(e.to)) fail(`第 ${index + 1} 条 action（knowledge）的边终点 "${e.to}" 不在图里（也不在本批次新建的节点里）`);
+          if (e.id !== undefined && e.id !== null) {
+            if (typeof e.id !== 'string' || !e.id) fail(`第 ${index + 1} 条 action（knowledge）的 edge.id 必须是非空字符串`);
+            if (shadowEdges.has(e.id)) fail(`第 ${index + 1} 条 action（knowledge）要建的边 "${e.id}" 已经存在`);
+            shadowEdges.add(e.id);
+          }
         }
       } else if (action.kind === 'goal') {
         if (!Array.isArray(action.targets) || action.targets.length === 0) {

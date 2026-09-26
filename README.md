@@ -141,8 +141,15 @@ T6 成本 1 分钟）→ 点「保存参数」→ 打开 `viz/index.html`，模�
 吐 `mindnet.result/1`（含 `trace` 完整运作过程 + append-only 存档）。契约见 `docs/IO_PROTOCOL.md`，
 给 AI 用的转写规程见 `docs/TRANSCRIBE.md`，命令行 `node tools/io_run.js --request … --graph …`。
 
+**上游怎么把「我要积累什么」喂进来**（手写记号 → 拍照 → 卡片 + 知识图）：
+记号约定见 `docs/MARKS.md`（页边三件套：范围线 + 类型字母 + 短项照抄），
+提取与转化流水线见 `docs/INGEST.md`，命令行
+`node tools/ingest.js --material … --out-dir out/`（一次产出卡片 / Anki TSV / 卡片模板 /
+TTS 清单 / 图补丁 / 请求）。示例：`example/material/en_listening_2026-09-25.json`。
+
 **每个数的归属**（避免两条规则同时改一个量）：`S` 只由机制（`mechanisms/memory.dsr.js`）改；
 反馈模块只观测与建议参数 —— 定案写在 `docs/IO_PROTOCOL.md` §6。
+**排程也只能有一个主人**（Anki 与 MindNet 不要同时排程）—— 见 `docs/INGEST.md` §4。
 
 **v2 怎么用（五行）**
 

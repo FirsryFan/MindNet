@@ -273,13 +273,33 @@ function main(argv) {
       return 1;
     }
     const onDisk = fs.readFileSync(OUT, 'utf8');
-    if (onDisk !== text) {
-      process.stderr.write('样例已过期：磁盘上的 conformance/mindnet_vectors.json 与当前实现不一致\n'
-        + '（如果这是有意改动实现，请重跑 node tools/conformance.js --write 并提交）\n');
+    if (onDisk === text) {
+      process.stdout.write(`样例一致：${payload.tierA.length} 条 tierA + ${payload.tierB.length} 条 tierB\n`);
+      return 0;
+    }
+    // 只有 generated_from.commit 变了（仓库又提交了一次）不算过期 ——
+    // 这条检查守的是**数值**，不是仓库历史。其余任何差异都必须重生成。
+    const strip = (obj) => {
+      const copy = JSON.parse(JSON.stringify(obj));
+      if (copy && copy.generated_from) copy.generated_from.commit = null;
+      return serialize(copy);
+    };
+    let onDiskObj = null;
+    try {
+      onDiskObj = JSON.parse(onDisk);
+    } catch (err) {
+      process.stderr.write(`样例文件不是合法 JSON：${err.message}（请重跑 --write）\n`);
       return 1;
     }
-    process.stdout.write(`样例一致：${payload.tierA.length} 条 tierA + ${payload.tierB.length} 条 tierB\n`);
-    return 0;
+    if (strip(onDiskObj) === strip(payload)) {
+      const oldSha = (onDiskObj.generated_from || {}).commit || '—';
+      process.stdout.write(`样例数值一致（只是 commit 变了：${String(oldSha).slice(0, 7)} → ${String(payload.generated_from.commit).slice(0, 7)}）\n`
+        + '提示：改动实现时顺手跑一次 node tools/conformance.js --write，让文件里的 commit 跟上\n');
+      return 0;
+    }
+    process.stderr.write('样例已过期：conformance/mindnet_vectors.json 的**数值**与当前实现不一致\n'
+      + '（如果这是有意改动实现，请重跑 node tools/conformance.js --write 并提交）\n');
+    return 1;
   }
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, text, 'utf8');
