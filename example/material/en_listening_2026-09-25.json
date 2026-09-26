@@ -29,7 +29,7 @@
     },
     {
       "id": "m2",
-      "mark": "搭",
+      "mark": "词",
       "text": "get the hang of",
       "margin_note": "get the hang of",
       "meaning": "摸到门道、上手",
@@ -97,6 +97,20 @@
         "exception"
       ],
       "inferred_from_line": true
+    },
+    {
+      "id": "m7",
+      "mark": "法",
+      "text": "先抓连接词，再补细节",
+      "page": 1,
+      "line": 22,
+      "mark_means": "自己总结的听力方法"
     }
-  ]
+  ],
+  "marks": {
+    "法": {
+      "role": "method",
+      "means": "听力方法/套路"
+    }
+  }
 }

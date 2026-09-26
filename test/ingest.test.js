@@ -42,20 +42,64 @@ function tiny(over) {
 
 // ------------------------------------------------------------------ 校验
 
-test('材料 · 校验：缺 margin_note / context / contains 悬空 / mark 非法 都要整份拒绝', () => {
+test('材料 · 校验：缺 margin_note / context / contains 悬空 要整份拒绝；不认识的记号**不拒绝**', () => {
   const cases = [
     [{ items: [{ id: 'a', mark: 'W', text: 'x', margin_note: 'x', page: 1, line: 1 }] }, /context/],
     [{ items: [{ id: 'a', mark: 'W', text: 'x', context: 'y', page: 1, line: 1 }] }, /margin_note/],
-    [{ items: [{ id: 'a', mark: 'X', text: 'x', page: 1, line: 1 }] }, /记号认不出来/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', contains: ['nope'], page: 1, line: 1 }] }, /contains 指向不存在/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', page: 1 }] }, /缺少 line 或 lines/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', page: 1, line: 1 }, { id: 'a', mark: 'S', text: 'y', page: 1, line: 2 }] }, /id .* 与前面的重复/],
+    [{ items: [{ id: 'a', text: 'x', page: 1, line: 1 }] }, /缺少 mark/],
   ];
   for (const [over, re] of cases) {
-    assert.throws(() => ingest.validateMaterial(tiny(over)), re, `这类信封必须被拒：${JSON.stringify(over.items)}`);
+    assert.throws(() => ingest.validateMaterial(tiny(over)), re, `这类清单必须被拒：${JSON.stringify(over.items)}`);
   }
   assert.throws(() => ingest.validateMaterial({ protocol: 'nope' }), /protocol/);
   assert.throws(() => ingest.validateMaterial({ protocol: 'mindnet.material/1', batch_id: 'b', items: [] }), /非空数组/);
+});
+
+test('材料 · 记号是开放的：不认识的记号照样收下（标未分类），声明的角色决定去向', () => {
+  // ① 既没声明、也不是内置记号 ⇒ 收下，role = other，只有一条告警
+  const loose = tiny({
+    items: [{ id: 'a', mark: '★', text: '随手写的', page: 1, line: 3 }],
+  });
+  const v1 = ingest.validateMaterial(loose);
+  assert.deepEqual(v1.warnings.map((w) => w.kind), ['unknown-mark']);
+  const std1 = ingest.toStandardItems(loose)[0];
+  assert.equal(std1.role, 'other');
+  assert.equal(std1.in_graph, false);
+  assert.equal(std1.text, '随手写的', '内容不会因为记号不认识就丢');
+  assert.equal(ingest.toStandardItems(loose).length, 1);
+
+  // ② 在 marks 块里声明了角色 ⇒ 按声明的走（自定义角色名也收）
+  const declared = tiny({
+    marks: { 法: { role: 'method', means: '解题方法/套路' } },
+    items: [{ id: 'a', mark: '法', text: '先判单调性再求最值', page: 1, line: 9 }],
+  });
+  const std2 = ingest.toStandardItems(declared)[0];
+  assert.equal(std2.role, 'method');
+  assert.equal(std2.mark_means, '解题方法/套路');
+  assert.equal(std2.in_graph, true);
+  const patch2 = ingest.buildGraphPatch(declared);
+  assert.equal(patch2.nodes[0].type, 'technique', '「方法」在模型里就是 technique 节点');
+  assert.equal(patch2.nodes[0].id, `en::method::${ingest.slug('先判单调性再求最值')}`);
+
+  // ③ 没声明的自定义角色 ⇒ 不进图，但保留在标准输出里
+  const custom = tiny({
+    marks: { 记: 'myrole' },
+    items: [{ id: 'a', mark: '记', text: '自留地', page: 1, line: 4 }],
+  });
+  const v3 = ingest.validateMaterial(custom);
+  assert.equal(v3.warnings.some((w) => w.kind === 'custom-role'), true);
+  assert.equal(ingest.toStandardItems(custom)[0].in_graph, false);
+
+  // ④ 修饰符也开放：不认识的保留，只提示
+  const modEnv = tiny({
+    items: [{ id: 'a', mark: '词', text: 'x', margin_note: 'x', context: 'y', page: 1, line: 1, modified: ['star', '我的记号'] }],
+  });
+  const v4 = ingest.validateMaterial(modEnv);
+  assert.equal(v4.warnings.some((w) => w.kind === 'custom-modifier'), true);
+  assert.deepEqual(ingest.toStandardItems(modEnv)[0].modifiers, ['star', '我的记号']);
 });
 
 test('材料 · 校验：不确定/冲突/重复文本产生告警但不拒绝（上游标了就照办）', () => {
@@ -71,15 +115,16 @@ test('材料 · 校验：不确定/冲突/重复文本产生告警但不拒绝�
   assert.match(warnings.find((w) => w.kind === 'uncertain').message, /第 3 行页边/);
 });
 
-test('材料 · 记号写法：写「词/搭/句/段/问」和写 W/C/S/T/N 等价（节点 id 完全相同）', () => {
+test('材料 · 记号写法：写「词/句/段/问/会」和写 W/S/T/N 等价；「搭」并入「词」', () => {
   assert.equal(ingest.canonMark('词'), 'W');
-  assert.equal(ingest.canonMark('搭'), 'C');
+  assert.equal(ingest.canonMark('搭'), 'W', '搭配和单词不分家');
+  assert.equal(ingest.canonMark('搭配'), 'W');
   assert.equal(ingest.canonMark('句'), 'S');
   assert.equal(ingest.canonMark('段'), 'T');
   assert.equal(ingest.canonMark('问'), 'N');
   assert.equal(ingest.canonMark('会'), 'OK');
   assert.equal(ingest.canonMark('1'), 'W');
-  assert.equal(ingest.canonMark('搭 '), 'C');
+  assert.equal(ingest.canonMark('搭 '), 'W');
   assert.equal(ingest.canonMark('W'), 'W');
   assert.equal(ingest.canonMark('n'), 'N');
   assert.equal(ingest.canonMark('看不懂的记号'), '看不懂的记号', '认不出来就原样返回，交给校验报错');
@@ -92,7 +137,7 @@ test('材料 · 记号写法：写「词/搭/句/段/问」和写 W/C/S/T/N 等�
     items: [{ id: 'i1', mark: '词', text: 'resilient', context: 'She was resilient.', margin_note: 'resilient', page: 1, line: 3 }],
   });
   const cards = ingest.toCards(env).cards;
-  assert.equal(cards[0].note_type, 'EN::Listen::Word');
+  assert.equal(cards[0].note_type, 'EN::Listen::Lex');
   assert.ok(cards[0].tags.indexOf('写::词') >= 0, '卡片上要留下"你写的是哪个记号"');
   assert.equal(ingest.buildGraphPatch(env).nodes[0].id, 'en::w::resilient');
 });
@@ -143,62 +188,62 @@ test('材料 · 图补丁：词/搭配=knowledge、句=logic、疑问不进图�
   const patch = ingest.buildGraphPatch(env);
   const byId = new Map(patch.nodes.map((n) => [n.id, n]));
   assert.equal(byId.get('en::w::resilient').type, 'knowledge');
-  assert.equal(byId.get('en::c::get-the-hang-of').type, 'knowledge');
+  assert.equal(byId.get('en::w::get-the-hang-of').type, 'knowledge', '搭配并入词，同一个节点前缀');
   assert.equal(patch.nodes.find((n) => n.id.startsWith('en::s::')).type, 'logic');
   assert.equal(byId.has('en::topic::travel'), true, '主题应当建 hub 节点');
   assert.equal(patch.nodes.some((n) => n.id.indexOf('m5') >= 0), false);
   assert.equal(patch.skipped.some((s) => s.item === 'm5'), true, '疑问要出现在 skipped 里');
   // contains ⇒ 句 → 搭配 的边；produce ⇒ 反向边
   const sId = patch.nodes.find((n) => n.id.startsWith('en::s::')).id;
-  assert.equal(patch.edges.some((e) => e.from === sId && e.to === 'en::c::get-the-hang-of'), true);
-  assert.equal(patch.edges.some((e) => e.from === 'en::c::get-the-hang-of' && e.to === sId), true, 'produce 要建反向边');
+  assert.equal(patch.edges.some((e) => e.from === sId && e.to === 'en::w::get-the-hang-of'), true);
+  assert.equal(patch.edges.some((e) => e.from === 'en::w::get-the-hang-of' && e.to === sId), true, 'produce 要建反向边');
   // 主题 hub 挂到所有条目
   assert.ok(patch.edges.filter((e) => e.from === 'en::topic::travel').length >= 5);
 });
 
 test('材料 · 卡片：听力卡带音频引用（不是空白正面）、释义来自 AI 的打待核对、produce 出产出卡', () => {
   const { cards, tts } = ingest.toCards(sample());
-  const word = cards.find((c) => c.note_type === 'EN::Listen::Word' && c.fields.Word === 'resilient');
+  const word = cards.find((c) => c.note_type === 'EN::Listen::Lex' && c.fields.Text === 'resilient');
   assert.match(word.fields.Audio, /^\[sound:en__w__resilient\.mp3\]$/, 'Audio 必须是可用的媒体引用');
   assert.ok(word.tags.indexOf('meaning_check') >= 0, 'AI 给的释义要标待核对');
   assert.ok(word.tags.indexOf('priority::star') >= 0);
-  const userMeaning = cards.find((c) => c.fields.Word === 'timetable');
+  const userMeaning = cards.find((c) => c.fields.Text === 'timetable');
   assert.equal(userMeaning.tags.indexOf('meaning_check'), -1, '自己写的释义不用标待核对');
   assert.ok(userMeaning.tags.indexOf('exception') >= 0);
   const sCard = cards.find((c) => c.note_type === 'EN::Listen::Sentence');
-  assert.equal(sCard.fields.KeyChunk, 'get the hang of', '句卡要带关键词块');
+  assert.equal(sCard.fields.KeyPoint, 'get the hang of', '句卡要带关键词块');
   assert.equal(cards.filter((c) => c.note_type === 'EN::Listen::Produce').length, 2);
   // tts 与卡片字段一一对应
   const files = tts.map((t) => t.file);
-  assert.deepEqual(files.slice().sort(), ['en__c__get-the-hang-of.mp3', 'en__s__' + ingest.hash8('It took me a while to get the hang of it.') + '.mp3', 'en__w__resilient.mp3', 'en__w__timetable.mp3'].sort());
+  assert.deepEqual(files.slice().sort(), ['en__w__get-the-hang-of.mp3', 'en__s__' + ingest.hash8('It took me a while to get the hang of it.') + '.mp3', 'en__w__resilient.mp3', 'en__w__timetable.mp3'].sort());
   for (const t of tts) assert.ok(t.text && t.note_type);
 });
 
 test('材料 · Anki 文件：每 note type 一个文件、头指令齐全、字段数与 tags 列号对得上', () => {
   const r = ingest.convert(sample(), { now_hours: 497321.25 });
   const names = Object.keys(r.anki_files).sort();
-  assert.deepEqual(names, ['EN.Listen.Chunk.tsv', 'EN.Listen.Produce.tsv', 'EN.Listen.Sentence.tsv', 'EN.Listen.Word.tsv']);
-  const wordTsv = r.anki_files['EN.Listen.Word.tsv'];
+  assert.deepEqual(names, ['EN.Listen.Lex.tsv', 'EN.Listen.Produce.tsv', 'EN.Listen.Sentence.tsv']);
+  const wordTsv = r.anki_files['EN.Listen.Lex.tsv'];
   const lines = wordTsv.trim().split('\n');
   assert.equal(lines[0], '#separator:tab');
   assert.equal(lines[1], '#html:false');
-  assert.equal(lines[2], '#notetype:EN::Listen::Word');
+  assert.equal(lines[2], '#notetype:EN::Listen::Lex');
   assert.equal(lines[3], '#deck:English::Listening');
-  assert.equal(lines[4], `#tags column:${ingest.CARD_FIELDS['EN::Listen::Word'].length + 1}`);
-  const fields = ingest.CARD_FIELDS['EN::Listen::Word'];
+  assert.equal(lines[4], `#tags column:${ingest.CARD_FIELDS['EN::Listen::Lex'].length + 1}`);
+  const fields = ingest.CARD_FIELDS['EN::Listen::Lex'];
   const audioIdx = fields.indexOf('Audio');
   for (const row of lines.slice(5)) {
     const cells = row.split('\t');
     assert.equal(cells.length, fields.length + 1, `列数不对：${row}`);
     assert.match(cells[audioIdx], /^\[sound:.+\.mp3\]$/, `Audio 列不能为空（否则正面是空的）：${row}`);
-    assert.ok(cells[0].length > 0, 'Word 列不能为空');
+    assert.ok(cells[0].length > 0, 'Text 列不能为空');
   }
   assert.match(wordTsv.split('\n')[5], /\[sound:en__w__resilient\.mp3\]/);
   // 允许其它列为空（例如没给 IPA 的词），那是正常的
   assert.match(wordTsv, /\t\t/, 'timetable 没有 IPA，应当出现空列（这是允许的）');
-  // 模板说明里四个 note type 都在，且字段名一致
+  // 模板说明里每个 note type 都在
   for (const nt of Object.keys(ingest.CARD_FIELDS)) assert.match(r.anki_templates, new RegExp(nt));
-  assert.match(r.anki_templates, /collection\.media/);
+  assert.match(r.anki_templates, /note type|模板/);
 });
 
 // ------------------------------------------------------------------ 请求
@@ -217,7 +262,7 @@ test('材料 · 请求：先节点后边、run_id 由 batch_id 决定、★ 条�
   assert.equal(req.actions.filter((a) => a.edge).length, r.graph_patch.edges.length);
   assert.equal(kinds.slice(0, nodeActions.length).every((k) => k === 'knowledge'), true);
   assert.equal(firstEdge > nodeActions.length - 1, true);
-  assert.deepEqual(req.actions[kinds.length - 1].targets, ['en::w::resilient', 'en::c::get-the-hang-of']);
+  assert.deepEqual(req.actions[kinds.length - 1].targets, ['en::w::resilient', 'en::w::get-the-hang-of']);
   // 每条动作都有时间基与出处
   for (const a of req.actions) {
     assert.equal(Number.isFinite(a.at.model_hours), true);
@@ -266,14 +311,14 @@ test('材料 · CLI：--check 只校验不写文件；--out-dir 产出五样东�
 
   const check = capture(() => main(['--material', SAMPLE, '--check']));
   assert.equal(check, 0, err.join(''));
-  assert.match(out.join(''), /信封合法/);
+  assert.match(out.join(''), /清单合法/);
   assert.match(out.join(''), /不进图：m5/);
 
   const dir = tmpPath(`ingest_${process.pid}`);
   const run = capture(() => main(['--material', SAMPLE, '--now-hours', '497321.25', '--out-dir', dir]));
   assert.equal(run, 0, err.join(''));
-  for (const f of ['cards.json', 'graph_patch.json', 'run_request.json', 'tts.tsv', 'tts.txt', 'summary.txt',
-    path.join('anki', 'templates.md'), path.join('anki', 'EN.Listen.Word.tsv')]) {
+  for (const f of ['items.json', 'graph_patch.json', 'run_request.json', 'cards.json', 'tts.tsv', 'tts.txt', 'summary.txt',
+    path.join('anki', 'templates.md'), path.join('anki', 'EN.Listen.Lex.tsv')]) {
     assert.equal(fs.existsSync(path.join(dir, f)), true, `缺少产出 ${f}`);
   }
   const tts = fs.readFileSync(path.join(dir, 'tts.tsv'), 'utf8').trim().split('\n');

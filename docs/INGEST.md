@@ -1,229 +1,166 @@
-# 从照片到学习材料：提取与转化流水线
+# 提取与格式转化
 
-> **三步**：`记号（docs/MARKS.md）` → `材料信封（AI 产出）` → `卡片 + MindNet 请求（确定性代码产出）`。
-> 中间那个信封是唯一需要 AI 的东西；两头都是确定的。
+> 三步：**记号（`docs/MARKS.md`）→ AI 提取 → 格式转化**。
+> 中间那步是唯一需要 AI 的；两头都是确定的。
 >
-> 与 `docs/TRANSCRIBE.md` 的分工：TRANSCRIBE 管「**我做错了什么**」（复习事件，改认知状态）；
-> 本文管「**我要积累什么**」（新材料，进知识图 + 生成卡片）。两者最后都汇到 `mindnet.run/1`。
+> 产出三样：**标准清单**（本步的正产品）、**进模型的节点与边**、**可直接跑的请求**。
+> 卡片怎么出、什么时候复习，都不在本步。
 
 ---
 
-## §1 流水线
+## §1 数据流
 
 ```
-纸上记号 ──拍照──► AI 判读 ──► 材料信封 mindnet.material/1
-                                     │
-                     ┌───────────────┼────────────────┐
-                     ▼               ▼                ▼
-              知识图补丁        呈现卡（Anki 式）   mindnet.run/1 请求
-           （节点 + 边）      cards.json + *.tsv    （knowledge 动作）
-                     │               │                │
-                     └───────► 一起进 MindNet ◄───────┘
-                                     │
-                          复习事件（你自己做题/听写）
-                                     │
-                        review 动作 → 机制改 S → 卡片下次什么时候出现
+纸上记号 ──拍照──► AI 判读 ──► 清单（mindnet.material/1）
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+              标准清单         节点与边         run 请求
+           （规范后的条目）  （进知识图）    （mindnet.run/1）
 ```
 
-**为什么中间要有一层信封，而不是让 AI 直接吐卡片**：
-AI 的产出必须**可核对、可重放、可修正**。信封里每条都带出处（哪一页哪一行）与把握，
-所以三条硬性质成立：
+**为什么中间要有一层清单**：AI 的产出必须**可核对、可重放、可修正**。
+清单里每条都带出处（第几页第几行）与把握，于是：
 
 1. **幂等**：条目 id 由内容确定（`en::w::resilient`），同一页拍两次不会重复建节点；
-2. **可追溯**：卡片上能回查"这是从哪一页哪一行来的"；
-3. **可退化**：AI 不确定就标 `uncertain`，不猜 —— 猜错的内容会污染后面的所有复习。
+2. **可追溯**：每个结论都能回查"从哪一页哪一行来的"；
+3. **可退化**：AI 不确定就标 `uncertain`，不猜 —— 猜错会污染后面所有复习。
 
 ---
 
-## §2 材料信封 `mindnet.material/1`
+## §2 清单格式 `mindnet.material/1`
 
 ```jsonc
 {
   "protocol": "mindnet.material/1",
-  "batch_id": "en-listen-2026-09-25-a",          // 幂等键：同一批只入一次
-  "source": {
-    "kind": "photo", "refs": ["dsc_0101.jpg"],
-    "material": "BBC 6 Minute English · 第 3 段",  // 材料出处（人话即可）
-    "captured_at": "2026-09-25T21:40:00+08:00"
+  "batch_id": "en-listen-2026-09-25-a",     // 幂等键
+  "source": { "kind": "photo", "refs": ["dsc_0101.jpg"],
+              "material": "BBC 6 Minute English · 第 3 段", "captured_at": "…" },
+  "topic": "travel",                         // 页面顶部 #主题（可空）
+  "language": "en",
+  "marks": {                                 // 可选：你自定义的记号在这里说明
+    "法": { "role": "method", "means": "听力方法/套路" }
   },
-  "topic": "travel",                              // 页面顶部的 #主题（可空）
-  "language": "en",                               // 用于卡片模板与 TTS
   "items": [
-    { "id": "m1", "mark": "词", "text": "resilient",     // 写「词」或 "W" 都一样
-      "margin_note": "resilient",                 // 页边你抄的那一份（可能拼错，仅消歧）
-      "meaning": "有韧性的，能扛的", "meaning_source": "ai",
-      "ipa": "/rɪˈzɪliənt/",
-      "context": "…she was remarkably resilient in the face of setbacks…",
-      "page": 1, "line": 12, "modified": ["star"], "produce": false },
+    { "id": "m1", "mark": "词", "text": "resilient",
+      "margin_note": "resilient",            // 页边你抄的那份（可能拼错，仅消歧）
+      "meaning": "有韧性的", "meaning_source": "ai", "ipa": "/rɪˈzɪliənt/",
+      "context": "…she was remarkably resilient…", "page": 1, "line": 12,
+      "modified": ["star"] },
 
-    { "id": "m2", "mark": "搭", "text": "get the hang of",
-      "meaning": "上手、摸到门道", "meaning_source": "ai",
-      "context": "It took me a while to get the hang of it.",
+    { "id": "m2", "mark": "词", "text": "get the hang of",     // 搭配也写「词」
+      "margin_note": "get the hang of", "context": "It took me a while to get the hang of it.",
       "page": 1, "line": 15, "modified": ["star", "produce"] },
 
     { "id": "m3", "mark": "句", "text": "It took me a while to get the hang of it.",
-      "page": 1, "lines": [15, 16], "contains": ["m2"], "produce": true },
+      "page": 1, "lines": [15, 16], "contains": ["m2"] },
 
-    { "id": "m4", "mark": "段", "text": "（整段文字，逐字给出）…",
-      "page": 1, "lines": [18, 24],
-      "questions": ["作者一开始为什么适应不了？", "后来靠什么转变？"] },
+    { "id": "m4", "mark": "段", "text": "（整段文字，逐字给出）…", "page": 1, "lines": [18, 24] },
 
-    { "id": "m5", "mark": "问", "text": "没听清 introduced 后面那个词，听起来像 'a-plows'",
-      "page": 1, "line": 20 }
+    { "id": "m5", "mark": "问", "text": "没听清 introduced 后面那个词",
+      "marked_by": "dot", "dot_position": "第 20 行 introduced 后", "page": 1, "line": 20 },
+
+    { "id": "m6", "mark": "法", "text": "先抓连接词，再补细节", "page": 1, "line": 22 }
   ]
 }
 ```
 
-### 2.1 字段规则（AI 必须遵守）
+### 2.1 字段规则
 
 | 字段 | 必填 | 规则 |
 |---|---|---|
-| `mark` | ✅ | 你写的那一个字：`词 / 搭 / 句 / 段 / 问 / 会`（也接受等价的 `W C S T N` 或 `1 2 3 4 5`） |
-| `text` | ✅ | **印刷正文为准**。`词`/`搭` 若页边与正文不一致 ⇒ 用正文校正，并标 `corrected: true` |
-| `margin_note` | `词`/`搭`/`问` 必填 | 页边你写的那一份原样抄录（含拼写错误），用于核对 |
-| `inferred_from_line` | 二选一 | `true` = 这一行只有一处要记，所以你没抄 —— 走这条就**不必**给 `margin_note` |
-| `marked_by` + `dot_position` | 二选一 | `"dot"` = 你是在那个词下面点的点；`dot_position` 用人话说明位置 |
-| `context` | `词`/`搭` 必填 | 它在正文里的那一句（切到句号为止）—— 这就是例句的来源 |
+| `mark` | ✅ | 你写的那个记号（默认 `词/句/段/问/会`；**自己发明的也收**） |
+| `text` | ✅ | **以正文为准**。页边与正文不一致时用正文，并标 `corrected: true` |
+| `margin_note` | 见下 | 页边你写的那一份原样抄录（含拼写错误） |
+| `inferred_from_line` | 见下 | `true` = 这一行只有一处要记，所以没抄 |
+| `marked_by` + `dot_position` | 见下 | `"dot"` = 你是在那个词下面点的点 |
+| `context` | 词类必填 | 它在正文里的那一句 —— 例句来源 |
 | `page` / `line(s)` | ✅ | 行号从本页第 1 行起数；跨行给 `lines: [起, 止]` |
-| `contains` | `句`/`段` 可选 | 指向**本批次内**的 `词`/`搭` id（表示"这句里有这些词"） |
-| `meaning` | 可选 | 中文释义；`meaning_source` 只能是 `ai`（卡片上会标"待核对"）或 `user`（你自己写的） |
-| `uncertain` | 可选 | `true` = 有东西看不清；同时给 `region`（人话描述位置） |
-| `conflict` | 可选 | `true` + `conflict_detail`：页边与正文冲突且无法判断 |
-| `duplicate_of` | 可选 | 同一批次内重复的条目指向先出现的那条 |
+| `contains` | `句`/`段` 可选 | 指向本批次内的 id（"这句里有这些词"） |
+| `meaning` | 可选 | 释义；`meaning_source` 只能是 `ai`（会被标"待核对"）或 `user` |
+| `marks`（顶层） | 可选 | 自定义记号 → `{role, means}`；`role` 见 `docs/MARKS.md` §4 |
+| `role`（条目级） | 可选 | 直接指定这条的角色（优先级最高） |
+| `uncertain` / `conflict` | 可选 | 看不清 / 页边与正文冲突；只是**记录**，不阻止入库 |
+| `duplicate_of` | 可选 | 重复条目的显式表达 |
 
-（`margin_note` / `inferred_from_line` / `marked_by` **三者至少有一个** ——
-要么你抄了，要么你说明了为什么没抄。都没有的话 AI 必须拒绝提取，不许猜。）
+`margin_note` / `inferred_from_line` / `marked_by` **至少有一个** ——
+要么你抄了，要么说明为什么没抄。
 
 ### 2.2 AI 不许做的事
 
-1. **不许改你的意思**：你没标的东西不提取（哪怕它觉得那个词更重要）；
-2. **不许补全没听清的内容**（`问` 类只记录你的疑问，不去替你猜答案）；
-3. **不许编 `line`**：数不清行号就标 `uncertain`；
-4. **不许把释义当事实**：`meaning` 一律 `meaning_source: "ai"`，卡片上会标"待核对"；
-5. **不许在没抄、也没说明的情况下猜你标的是哪个词**（走 §3.2 的省事通道必须写明）；
-6. **不许合并**不同条目（重复的用 `duplicate_of` 显式表达）。
+1. **不许改你的意思**：你没标的，不提取；
+2. **不许补全没听清的内容**（`问` 只记录你的疑问，不替你猜答案）；
+3. **不许编 `line`**：数不清就标 `uncertain`；
+4. **不许把释义当事实**：AI 给的释义一律 `meaning_source: "ai"`；
+5. **不许在没抄、也没说明的情况下猜你标的是哪个词**；
+6. **不许丢掉不认识的记号** —— 收下，交给 `role` 决定去向。
 
 ---
 
-## §3 确定性转化（`src/ingest.js`）
+## §3 转化产物
 
-### 3.1 知识图补丁
+跑一次 `node tools/ingest.js --material x.json --now-hours <模型小时> --out-dir out/`：
 
-| 信封里的东西 | 变成 | 节点类型 | 说明 |
-|---|---|---|---|
-| `W` 词 | 节点 | `knowledge` | |
-| `C` 搭配 | 节点 | `knowledge` | |
-| `S` 句 / 句型 | 节点 | `logic` | 句型属于"程序性/结构性"知识 |
-| `T` 语段 | 节点 | `knowledge` | |
-| `N` 疑问 | **不建节点** | — | 进疑问清单，等你/AI 答复后再决定 |
-| `topic` | hub 节点 | `knowledge` | `#travel` → `en::topic::travel` |
-| `contains` | 边 `S/T → W/C` | | 语义："听到这句，要能听出这个词" |
-| `produce: true` | 边 `W/C/S → 上一级` | | 反向："想到这个搭配，要能说出整句" |
-| 主题 hub | 边 `hub → 每条` | | 用于按主题批量调度 |
-
-节点 id 是**内容确定**的：`en::w::resilient`、`en::c::get-the-hang-of`、
-`en::s::<规范化文本的 8 位哈希>`、`en::topic::travel`。所以重拍同一页不会建重复节点。
-
-### 3.2 卡片（Anki 式）
-
-四张卡型（字段名固定；第一次用要在 Anki 里手动建这四个 note type，之后拖文件即可）：
-
-| note type | 字段 | 正面 | 背面 |
-|---|---|---|---|
-| `EN::Listen::Word` | `Word, Meaning, IPA, Audio, Example, Source` | **音频**（听音辨义） | 拼写 + 释义 + 例句 + 出处 |
-| `EN::Listen::Chunk` | `Chunk, Meaning, Audio, Example, Source` | 音频 | 短语 + 释义 + 例句 + 出处 |
-| `EN::Listen::Sentence` | `Audio, Text, Meaning, KeyChunk, Source` | 音频 | 原句 + 中文 + 关键词块 + 出处 |
-| `EN::Listen::Produce` | `Prompt, Target, Audio, Source` | 中文意思 / 提示 | 目标英文（产出型） |
-
-两条设计要点：
-
-- **听力卡必须是"听音 → 想意思"**，不是"看词 → 想意思" —— 否则练的是阅读。
-  所以每张卡都带 `Audio` 字段，而且它是**直接可用的媒体引用**：`[sound:en__w__resilient.mp3]`
-  （文件名由节点 id 确定）。同时导出一份 **TTS 清单**（文件名 → 文本，工具生成的 `tabular` 文件），
-  合成时**保持文件名不变**、丢进 Anki 的媒体目录，卡片就能发声。
-  还没合成音频时，模板会退化到 `IPA`（词/搭配）或提示文本 —— 不会出现空白正面。
-- **`Produce` 卡只在 `→` 时生成**：听得懂 ≠ 说得出，产出型练习单独一类。
-
-导出里还有一份 **Anki 建卡说明**（工具生成）：四个 note type 的字段顺序与正/背面模板
-（含上面那个"没音频就退化"的分支），在 Anki 里建一次即可。
-
-### 3.3 `mindnet.run/1` 请求
-
-`knowledge` 动作按**依赖顺序**排（先建节点，再建边 —— 边要求两端已存在），
-`run_id = ingest-<batch_id>`（幂等），时间基由调用方给（`--now-hours`）。
-`★` 条目会额外生成一个 `goal` 动作（把高优先级条目设为目标 —— 目标偏置会优先照亮它们）。
-
-复习侧（你做完听写/自测之后）用 `docs/TRANSCRIBE.md` 的 `review` 动作，
-听力场景的对应关系：
-
-| 你的实际情况 | 写什么 |
+| 文件（`--out-dir` 下生成） | 是什么 |
 |---|---|
-| 听音就能想起意思/拼写 | `review(outcome="correct")` |
-| 听清了音但没懂意思 | `review(outcome="wrong", closeness=0.3)` |
-| 听出了一部分（半个词、几个音节） | `review(outcome="wrong", closeness=0.7, reviewed_solution=true)` |
-| 完全没听出来 | `review(outcome="blank")` |
-| 只重听了一遍原句（没测） | `exposure` |
+| `items.json` [新] | **标准清单**：规范后的条目（记号、角色、出处、含义、是否进图、节点 id） |
+| `graph_patch.json` [新] | 进知识图的节点与边 |
+| `run_request.json` [新] | `mindnet.run/1`：先建节点、再建边、把 `★` 条目设为目标 |
+| `cards.json` / `tts.tsv` / `tts.txt` / `anki/` [新] | **可选的呈现层**（本步之外，想要卡片就拿走） |
 
-> `closeness` 在听力场景里特别有用：MindNet 的"失败后对答案"路径**按 closeness 加权**，
-> "差一点听出来"给的增益最大 —— 这正是合意难度（desirable difficulty）在听觉通道上的样子。
+**角色 → 图**：`item` → `knowledge`；`passage` → `logic`；`method` → `technique`；
+`question` / `known` / `note` / `other` **不进图**，只留在标准清单里（附原因）。
 
----
-
-## §4 不在本批范围的事
-
-本批只做三件：**记号 → AI 提取 → 格式转化**。
-"卡片什么时候再出现、由谁排"（Anki 与模型的排程关系）**不在本批**，以后单独定 ——
-现在只要知道一条：那两个来源**不能同时开**，会互相打架。
-同理，"题目评价 / 搜题 / 计划"也都不在这里（见 `docs/IO_PROTOCOL.md` §9）。
+**节点 id**：`en::w::resilient`（词与搭配共用 `w`）、`en::s::<hash>`（句）、
+`en::method::<slug>`（方法）。内容确定 ⇒ 同一页拍两次不会重复建。
 
 ---
 
-## §5 给 AI 的提示词（材料模式，整段复制）
+## §4 给 AI 的提示词（整段复制）
 
 ```text
-你是 MindNet 的"材料提取员"。用户会在纸上用固定记号标出要积累的内容，然后拍照给你。
-你的唯一任务：把这张照片转写成一份 mindnet.material/1 的信封 JSON。不要做别的。
+你是 MindNet 的"材料提取员"。用户会在纸上用记号标出要积累的内容，然后拍照给你。
+你的唯一任务：把照片转写成一份 mindnet.material/1 清单 JSON。不要做别的。
 
-【记号表】
-- 页边竖线 = 范围；竖线顶端的**一个字**是类型（写字母也行，等价）：
-  词 / W = 单词（页边会照抄）      搭 / C = 搭配短语（页边会照抄）
-  句 / S = 句子（不抄，正文即内容）  段 / T = 语段（不抄，覆盖多行）
-  问 / N = 疑问（页边写了问题）     会 / ✓ = 我已经会了（不要建条目）
+【记号】
+- 页边竖线 = 范围；竖线顶端的一个字是类型：
+  词 = 单词或搭配（页边会照抄）  句 = 句子（不抄，正文即内容）
+  段 = 语段（不抄）              问 = 疑问（页边写了问题）
+  会 = 我已经会了（不要建条目）
 - 类型字后面的符号：★ 重要 / → 要能说出来 / ? 拿不准 / ! 特例
-- 页面顶部可能有 #主题 与日期
+- 用户可能自己发明记号（比如「法」「坑」「☆」）。**不认识的记号不要丢**：
+  照样收进 items，并在清单顶部的 marks 块里写 {"<记号>": {"role": "<你判断的角色>",
+  "means": "<你推测的意思>"}}，role 从 item/passage/method/question/note/other 里选。
+- 页面顶部可能有 #主题 与日期。
 
 【硬规则】
-1. 拼写以**印刷正文**为准；页边抄写只用于消歧与核对。两者不一致时用正文，
-   并记下 margin_note 与 corrected: true。实在判不了就 conflict: true。
-2. 词/搭/问 必须有 margin_note（页边原样，含拼写错误）；词/搭 必须有 context（正文里的那一句）。
-   **两条省事通道**（用户没抄时）：
-   - 这一行只有一处要记 ⇒ 给 inferred_from_line: true，说明你是按"整行唯一一处"取的；
-   - 用户在那个词下面点了点 ⇒ 给 marked_by: "dot" 与 dot_position（人话描述位置）。
-   两者都没有、页边也没抄 ⇒ **不要提取这一条**（不要猜是哪个词）。
-3. 行号从本页第 1 行开始数；数不清就标 uncertain: true 并描述位置，不要猜。
-4. 句子/语段里的词/搭 用 contains 指出来（只能指向本批次内的 id）。
-5. 你没把握的一律标 uncertain: true；宁可少提取，不可猜。
-6. 释义可以给，但必须标 meaning_source: "ai"，并且不确定就留空。
-7. 不要提取用户没标记的内容；不要合并不同条目（重复的用 duplicate_of）。
+1. 拼写以**印刷正文**为准；页边抄写只用于消歧。不一致时用正文，记下 margin_note 并标
+   corrected: true；实在判不了就 conflict: true。
+2. 词/问 必须有 margin_note；**两种情况可以不抄**：
+   这一行只有一处要记 ⇒ 标 inferred_from_line: true；
+   用户在那个词下面点了点 ⇒ 标 marked_by: "dot" 加 dot_position（人话描述位置）。
+   两者都没有、页边也没抄 ⇒ 不要提取这一条。
+3. 词类必须有 context（正文里的那一句）。
+4. 行号从本页第 1 行起数；数不清就标 uncertain: true 并描述位置。
+5. 句/段里的词用 contains 指出来（只能指向本批次内的 id）。
+6. 没把握的一律标 uncertain: true；宁可少提取，不可猜。
+7. 释义可以给，但必须标 meaning_source: "ai"。
+8. 不要提取用户没标记的内容；不要合并条目（重复的用 duplicate_of）。
 
-【输出格式】只输出 JSON，不要解释文字，不要 markdown 围栏：
-{
-  "protocol": "mindnet.material/1",
-  "batch_id": "<来源-日期-序号>",
-  "source": { "kind": "photo", "refs": ["<文件名>"], "material": "<材料出处>", "captured_at": "<ISO>" },
+【输出】只输出 JSON，不要解释文字，不要 markdown 围栏：
+{ "protocol": "mindnet.material/1", "batch_id": "<来源-日期-序号>",
+  "source": { "kind": "photo", "refs": ["<文件名>"], "material": "<出处>", "captured_at": "<ISO>" },
   "topic": "<#主题，可空>", "language": "en",
-  "items": [ ... ]
-}
+  "marks": { }, "items": [ ] }
 
 【发输出前自检】
-□ protocol 是 "mindnet.material/1"，batch_id 非空
-□ 每条 item 都有 mark / text / page / line(s)
-□ 词/搭/问 有 margin_note，或者写明了 inferred_from_line / marked_by
-□ 词/搭 有 context
-□ contains 只指向本批次内已存在的 id
-□ 没把握的都标了 uncertain，没有编造的行号或内容
-□ 没有提取用户没标记的内容
-□ JSON 能被 JSON.parse 解析（无注释、无尾逗号）
+□ protocol 与 batch_id 都在，items 非空
+□ 每条都有 mark / text / page / line(s)
+□ 词/问 有 margin_note，或写明了 inferred_from_line / marked_by
+□ 词类有 context；contains 只指向本批次内已存在的 id
+□ 不认识的记号没有丢，且写进了 marks
+□ 没把握的都标了 uncertain；没有编造的行号或内容
+□ JSON 能被 JSON.parse 解析
 
 【本次照片】
 （用户附上照片）
@@ -231,43 +168,32 @@ AI 的产出必须**可核对、可重放、可修正**。信封里每条都带�
 
 ---
 
-## §6 自检与命令
+## §5 命令
 
 ```powershell
-# 1. AI 产出信封后，先校验（不写任何东西、不跑模型）
+# 1. 先校验（不写文件、不跑模型）
 node tools/ingest.js --material material.json --check
 
-# 2. 真正的转化（一次产出全部：卡片 / Anki 文件 / 模板 / tts / 图补丁 / 请求）
+# 2. 转化
 node tools/ingest.js --material material.json --now-hours 497321.25 --out-dir out/
-#    out/cards.json · out/anki/*.tsv · out/anki/templates.md
-#    out/tts.tsv · out/tts.txt · out/run_request.json · out/graph_patch.json · out/summary.txt
 
-# 3. 校验请求本身是否合法（只校验不执行）
-node tools/io_check.js --request out/run_request.json --graph demo_learning
-
-# 4. 真跑（把新材料并入认知模型）
-node tools/io_run.js --request out/run_request.json --graph <你的图> --print digest
+# 3. 校验请求 → 4. 真跑（把材料并进认知模型）
+node tools/io_check.js --request out/run_request.json --graph <你的图>
+node tools/io_run.js  --request out/run_request.json --graph <你的图> --print digest
 ```
-
-**幂等**：`run_id = ingest-<batch_id>`，节点 id 由内容确定 ⇒ 同一页拍两次不会重复建节点，
-重复提交请求也只会返回上次结果（`replay: true`）。
-**同批次引用**：请求里先建节点、再建边、最后把 `★` 条目设为目标 —— 这三步是同一份请求，
-IO 层按顺序校验与执行（这条能力是为材料入库加的）。
 
 ---
 
-## §7 抽象：三步法的通用形态
+## §6 概括
 
-把英语听力换成任何场景，只有两处会变（记号表、卡片模板），流水线不动：
+三步法，换场景只动两处（记号表、呈现层），流水线不动：
 
-| 步骤 | 输入 | 谁做 | 输出 | 通用要求 |
-|---|---|---|---|---|
-| ① 记号 | 纸上选择 | **人**（30 秒/页） | 页边锚点 | 形状独特、单笔画、不依赖颜色/方向；短的抄、长的圈 |
-| ② 提取 | 照片 | **AI** | 材料信封 | 只感知不判断；带出处与把握；不确定标不确定；幂等 id |
-| ③ 转化 | 信封 | **确定性代码** | 图补丁 + 卡片 + 请求 | 纯函数、可对拍（`conformance`）、可重放（`run_id`） |
+| 步骤 | 谁做 | 产物 | 要求 |
+|---|---|---|---|
+| ① 记号 | **人**（30 秒/页） | 页边锚点 | 形状独特、单笔画、不依赖颜色/方向；短的抄、长的圈 |
+| ② 提取 | **AI** | 清单 | 只感知不判断；带出处与把握；不确定标不确定；**不认识的记号不丢** |
+| ③ 转化 | **确定性代码** | 标准清单 + 图补丁 + 请求 | 纯函数、幂等、可重放 |
 
-三条不变量（跨场景都成立）：
-
-1. **印刷/原始材料是权威，人的手写只用于消歧** —— 把手写当权威，OCR 的错会变成模型的错；
-2. **一个量只有一个主人** —— 排程（这里）、`S`（`docs/IO_PROTOCOL.md` §6）都是同一原则；
-3. **AI 的每个字段都必须能追回"哪一页哪一行"** —— 追不回去的字段不准进模型。
+三条不变量：**原始材料是权威（手写只用于消歧）**；
+**AI 的每个字段都能追回"哪一页哪一行"**；
+**不认识的输入不会被丢掉，只会被标成"待归类"**。

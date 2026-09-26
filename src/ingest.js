@@ -19,13 +19,30 @@
   const MATERIAL_PROTOCOL = 'mindnet.material/1';
   const RUN_PROTOCOL = 'mindnet.run/1';
 
-  /** 记号表（换记号只改这里；对应 docs/MARKS.md §2） */
+  /**
+   * 记号能扮演的**角色**（这是模型真正在乎的东西）。
+   * 角色集合是**开放的**：表里这些是内置的，你自己声明的角色名也会被原样收下。
+   */
+  const ROLES = Object.freeze({
+    item: '可复习的单元（词、搭配、公式、知识点…）',
+    passage: '整句 / 整段',
+    question: '疑问 / 没听清',
+    known: '我已知',
+    method: '方法 / 技巧 / 套路',
+    note: '提醒 / 坑 / 易错点',
+    other: '未分类（先收着，等你或 AI 归类）',
+  });
+
+  /** 内置记号 → 角色（其它记号靠"声明"或"直接用"，不会被拒） */
+  const BUILTIN_ROLE = Object.freeze({
+    W: 'item', S: 'passage', T: 'passage', N: 'question', OK: 'known',
+  });
+
   const MARKS = Object.freeze({
-    W: { name: 'word', node_type: 'knowledge', card: 'EN::Listen::Word', copy_to_margin: true },
-    C: { name: 'chunk', node_type: 'knowledge', card: 'EN::Listen::Chunk', copy_to_margin: true },
+    W: { name: 'lexical', node_type: 'knowledge', card: 'EN::Listen::Lex', copy_to_margin: true },
     S: { name: 'sentence', node_type: 'logic', card: 'EN::Listen::Sentence', copy_to_margin: false },
     T: { name: 'passage', node_type: 'knowledge', card: null, copy_to_margin: false },
-    N: { name: 'note', node_type: null, card: null, copy_to_margin: true },
+    N: { name: 'question', node_type: null, card: null, copy_to_margin: true },
     OK: { name: 'known', node_type: null, card: null, copy_to_margin: false },
   });
 
@@ -33,22 +50,23 @@
    * 你手上写的记号 → 内部代号。
    * 中文单字是**默认写法**（不用在脑子里翻译，笔顺也少）；字母是等价的别名，
    * 所以你写「词」还是 `W` 都一样，出来的节点 id 也完全相同（不会重复建）。
+   * **认不出来的记号不会被拒绝** —— 原样返回，靠角色（内置 / 声明 / 显式）决定怎么处理。
    */
   const MARK_WRITTEN = Object.freeze({
-    W: '词', C: '搭', S: '句', T: '段', N: '问', OK: '会',
+    W: '词', S: '句', T: '段', N: '问', OK: '会',
   });
 
+  // 「词」与「搭」不分家：搭配也写「词」（写「搭」照样认，等价）
   const MARK_ALIASES = Object.freeze({
-    词: 'W', 单词: 'W', w: 'W', W: 'W',
-    搭: 'C', 搭配: 'C', 短语: 'C', c: 'C', C: 'C',
+    词: 'W', 单词: 'W', 搭: 'W', 搭配: 'W', 短语: 'W', 词组: 'W', w: 'W', W: 'W', c: 'W', C: 'W',
     句: 'S', 句子: 'S', 句型: 'S', s: 'S', S: 'S',
     段: 'T', 段落: 'T', 语段: 'T', t: 'T', T: 'T',
     问: 'N', 疑问: 'N', n: 'N', N: 'N',
     会: 'OK', 懂: 'OK', 已知: 'OK', ok: 'OK', OK: 'OK',
-    1: 'W', 2: 'C', 3: 'S', 4: 'T', 5: 'N',
+    1: 'W', 2: 'W', 3: 'S', 4: 'T', 5: 'N',
   });
 
-  /** 把写出来的记号规范成内部代号；认不出来就原样返回（交给校验去报错） */
+  /** 把写出来的记号规范成内部代号；认不出来就原样返回（由角色决定去向，不报错） */
   function canonMark(mark) {
     if (mark === undefined || mark === null) return mark;
     const key = String(mark).trim();
@@ -64,6 +82,49 @@
     return MARK_WRITTEN[canon] || String(mark);
   }
 
+  /** 信封里声明的记号说明（`marks` 块）：字符串或 {role, means} 都收 */
+  function declaredMark(env, mark) {
+    if (!env || !env.marks || typeof env.marks !== 'object') return null;
+    const raw = env.marks[mark] === undefined ? env.marks[canonMark(mark)] : env.marks[mark];
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw === 'string') return { role: raw, means: null };
+    if (typeof raw === 'object') return { role: raw.role === undefined ? null : String(raw.role), means: raw.means === undefined ? null : String(raw.means) };
+    return null;
+  }
+
+  /**
+   * 一条 item 的角色怎么定（顺序即优先级）：
+   *   ① item.role 显式给了 → 用它；
+   *   ② 内置记号（词/搭/句/段/问/会，含字母数字别名）→ 内置角色；
+   *   ③ 信封 marks 块里声明了 → 用声明的角色（角色名可以是你自己发明的）；
+   *   ④ 都没有 → `other`（**照样收下**，只标记未分类）。
+   */
+  function resolveRole(item, env) {
+    if (item && item.role) return String(item.role);
+    const canon = canonMark(item && item.mark);
+    if (BUILTIN_ROLE[canon]) return BUILTIN_ROLE[canon];
+    const decl = declaredMark(env, item && item.mark);
+    if (decl && decl.role) return decl.role;
+    return 'other';
+  }
+
+  /** 这个记号是不是"自定义的"（不在内置表里） */
+  function isCustomMark(mark) {
+    return !MARKS[canonMark(mark)];
+  }
+
+  /** 角色 → 图里的节点类型；null = 不进图 */
+  const ROLE_NODE_TYPE = Object.freeze({
+    item: 'knowledge',
+    passage: 'logic',
+    method: 'technique',
+    question: null,
+    known: null,
+    note: null,
+    other: null,
+  });
+
+  /** 内置修饰符；不认识的修饰符**照样保留**，只标注一下 */
   const MODIFIERS = ['star', 'produce', 'needs_review', 'exception'];
 
   /**
@@ -77,9 +138,9 @@
   });
 
   const CARD_FIELDS = Object.freeze({
-    'EN::Listen::Word': ['Word', 'Meaning', 'IPA', 'Audio', 'Example', 'Source'],
-    'EN::Listen::Chunk': ['Chunk', 'Meaning', 'Audio', 'Example', 'Source'],
-    'EN::Listen::Sentence': ['Audio', 'Text', 'Meaning', 'KeyChunk', 'Source'],
+    // 词与搭共用一张卡（不分家）
+    'EN::Listen::Lex': ['Text', 'Meaning', 'IPA', 'Audio', 'Example', 'Source'],
+    'EN::Listen::Sentence': ['Audio', 'Text', 'Meaning', 'KeyPoint', 'Source'],
     'EN::Listen::Produce': ['Prompt', 'Target', 'Audio', 'Source'],
   });
 
@@ -125,12 +186,15 @@
 
   /**
    * 节点 id：内容确定 ⇒ 同一页拍两次不会重复建节点。
-   * 记号先规范成内部代号，所以写「词」还是 `W` 得到的是**同一个 id**（幂等的前提）。
+   * 记号先规范成内部代号，所以写「词」还是 `W` 得到的是**同一个 id**（幂等的前提）；
+   * 自定义记号按**角色**归类（`en::method::…`），所以两个不同的自定义记号
+   * 只要角色一样、内容一样，也只会建一个节点。
    */
-  function nodeId(language, mark, text) {
+  function nodeId(language, mark, text, role) {
     const lang = (language || 'en').toLowerCase();
     const canon = canonMark(mark) || 'x';
-    const kind = String(canon).toLowerCase();
+    const kind = BUILTIN_ROLE[canon] ? String(canon).toLowerCase()
+      : (role && ROLES[role] ? String(role) : 'x');
     const key = canon === 'S' || canon === 'T' ? hash8(text) : slug(text);
     return `${lang}::${kind}::${key || hash8(text)}`;
   }
@@ -161,10 +225,22 @@
       if (!raw || typeof raw !== 'object') fail(`${at} 不是对象`);
       if (typeof raw.id !== 'string' || !raw.id) fail(`${at} 缺少 id`);
       if (seen.has(raw.id)) fail(`${at} 的 id "${raw.id}" 与前面的重复`);
+      // 缺 mark ≠ 自定义记号：那是"根本没标"，属于上游漏填，必须报错
+      if (raw.mark === undefined || raw.mark === null || String(raw.mark).trim() === '') {
+        fail(`${at} 缺少 mark（你写的那个记号）。记号可以自己发明，但不能空着`);
+      }
       const mark = canonMark(raw.mark);
-      if (!MARKS[mark]) {
-        fail(`${at} 的记号认不出来：${JSON.stringify(raw.mark)}。`
-          + `能认的是 ${Object.keys(MARK_WRITTEN).map((k) => `${MARK_WRITTEN[k]}（${k}）`).join(' / ')}`);
+      const written = writtenMark(raw.mark);
+      const role = resolveRole(raw, env);
+      // 记号认不出来**不报错**：按角色收下（默认 other），只提示一句
+      if (isCustomMark(raw.mark) && !declaredMark(env, raw.mark) && !raw.role) {
+        warnings.push({
+          item: raw.id, kind: 'unknown-mark',
+          message: `记号「${written}」不在内置表里，也没有在 marks 块里声明 ⇒ 先按「未分类」收下`
+            + '（想让它进知识图，就声明 role: "item" / "method" / "passage"）',
+        });
+      } else if (isCustomMark(raw.mark) && !ROLES[role]) {
+        warnings.push({ item: raw.id, kind: 'custom-role', message: `自定义角色「${role}」：按"不进图"处理，只留在标准输出里` });
       }
       if (typeof raw.text !== 'string' || !raw.text.trim()) fail(`${at} 缺少 text`);
       if (!Number.isFinite(Number(raw.page))) fail(`${at} 缺少 page`);
@@ -173,22 +249,25 @@
           && raw.lines.every((x) => Number.isFinite(Number(x))));
       if (!hasLine) fail(`${at} 缺少 line 或 lines`);
 
-      const meta = MARKS[mark];
       // 两条"省事通道"：页边没抄也能收，但必须**显式说明为什么**（不许 AI 偷偷猜）
       const fromLine = raw.inferred_from_line === true;      // 这一行只有这一处要记
       const byDot = raw.marked_by === 'dot';                 // 你在那个词下面点了个点
-      if (meta.copy_to_margin && mark !== 'OK' && !hasText(raw.margin_note) && !fromLine && !byDot) {
-        fail(`${at}（${writtenMark(mark)}）缺少 margin_note：`
+      const needsMargin = role === 'item' || role === 'question';
+      if (needsMargin && !hasText(raw.margin_note) && !fromLine && !byDot) {
+        fail(`${at}（${written}）缺少 margin_note：`
           + '页边照抄的那一份必须给出来；或者显式说明这行只有一处要记（inferred_from_line）'
           + '／你是用点子标的（marked_by: "dot"）—— 见 docs/MARKS.md §3.2');
       }
-      if ((mark === 'W' || mark === 'C') && !hasText(raw.context)) {
-        fail(`${at}（${writtenMark(mark)}）缺少 context：正文里的那一句是例句来源`);
+      if (role === 'item' && !hasText(raw.context)) {
+        fail(`${at}（${written}）缺少 context：正文里的那一句是例句来源`);
       }
       if (raw.modified !== undefined) {
         if (!Array.isArray(raw.modified)) fail(`${at} 的 modified 必须是数组`);
         for (const m of raw.modified) {
-          if (MODIFIERS.indexOf(m) < 0) fail(`${at} 的修饰符 "${m}" 不在 ${MODIFIERS.join(' / ')} 里`);
+          if (MODIFIERS.indexOf(m) < 0) {
+            // 修饰符也开放：不认识的保留下来，只提示
+            warnings.push({ item: raw.id, kind: 'custom-modifier', message: `自定义修饰符「${m}」：原样保留，不参与自动处理` });
+          }
         }
       }
       const norm = normalize(raw.text);
@@ -244,26 +323,35 @@
 
     for (const item of env.items) {
       const mark = canonMark(item.mark);
-      const meta = MARKS[mark];
-      if (!meta.node_type) {
-        skipped.push({ item: item.id, mark, reason: mark === 'N' ? '疑问不进图（先答复，再决定是否建节点）' : '标记为已知' });
+      const role = resolveRole(item, env);
+      const decl = declaredMark(env, item.mark);
+      const nodeType = ROLE_NODE_TYPE[role] === undefined ? null : ROLE_NODE_TYPE[role];
+      if (!nodeType) {
+        const why = role === 'question' ? '疑问不进图（先答复，再决定是否建节点）'
+          : role === 'known' ? '标记为已知'
+            : role === 'note' ? '提醒/坑不进图（留在标准输出里；要进图就声明 role: "method" 或 "item"）'
+              : `角色「${role}」不进图（先留在标准输出里）`;
+        skipped.push({ item: item.id, mark, role, reason: why });
         continue;
       }
       if (item.duplicate_of) {
         idOf.set(item.id, idOf.get(item.duplicate_of) || null);
-        skipped.push({ item: item.id, mark, reason: `与 ${item.duplicate_of} 重复` });
+        skipped.push({ item: item.id, mark, role, reason: `与 ${item.duplicate_of} 重复` });
         continue;
       }
-      const id = nodeId(lang, mark, item.text);
+      const id = nodeId(lang, mark, item.text, role);
       idOf.set(item.id, id);
       nodes.push({
         id,
         name: item.text.slice(0, 80),
-        type: meta.node_type,
+        type: nodeType,
         // 这些不是模型状态，只是"材料元数据"，随节点名/权重一起带过去
         meta: {
           mark,
-          mark_written: MARK_WRITTEN[mark] || null,
+          mark_written: MARK_WRITTEN[mark] || mark,
+          role,
+          custom_mark: isCustomMark(item.mark),
+          mark_means: decl && decl.means ? decl.means : (item.mark_means === undefined ? null : item.mark_means),
           meaning: item.meaning === undefined ? null : item.meaning,
           meaning_source: item.meaning_source === undefined ? null : item.meaning_source,
           ipa: item.ipa === undefined ? null : item.ipa,
@@ -354,8 +442,9 @@
 
     for (const item of env.items) {
       const mark = canonMark(item.mark);
-      const meta = MARKS[mark];
-      if (!meta.card) continue;
+      const role = resolveRole(item, env);
+      if (role !== 'item' && role !== 'passage') continue;      // 其余角色不出卡片
+      if (role === 'passage' && mark === 'T') continue;         // 「段」不出卡：整段不适合塞进一张卡
       const mods = modifiersOf(item);
       const flags = [];
       if (mods.has('star')) flags.push('priority::star');
@@ -363,19 +452,20 @@
       if (mods.has('needs_review')) flags.push('needs_review');
       if (item.uncertain) flags.push('uncertain');
       if (item.meaning_source === 'ai') flags.push('meaning_check');
-      // 省事通道产生的条目也打标，方便你在 Anki 里筛出来核对
+      // 省事通道产生的条目也打标，方便事后筛出来核对
       if (item.inferred_from_line === true) flags.push('scope_from_line');
       if (item.marked_by === 'dot') flags.push('scope_dot');
+      if (isCustomMark(item.mark)) flags.push('custom_mark');
       const tags = [`mark::${mark}`, `写::${MARK_WRITTEN[mark] || mark}`, ...flags,
         ...(env.topic ? [`topic::${slug(env.topic)}`] : [])];
       const audio = audioRef(mark, item.text);
+      const cardType = role === 'item' ? 'EN::Listen::Lex' : 'EN::Listen::Sentence';
 
-      if (mark === 'W' || mark === 'C') {
-        const field = mark === 'W' ? 'Word' : 'Chunk';
+      if (role === 'item') {
         cards.push({
-          note_type: meta.card,
+          note_type: cardType,
           fields: {
-            [field]: item.text,
+            Text: item.text,
             Meaning: item.meaning || '',
             IPA: item.ipa || '',
             Audio: audio,
@@ -385,7 +475,7 @@
           tags,
           tts_text: item.text,
         });
-        pushTts(audioFile(mark, item.text), item.text, meta.card);
+        pushTts(audioFile(mark, item.text), item.text, cardType);
         if (mods.has('produce')) {
           cards.push({
             note_type: 'EN::Listen::Produce',
@@ -399,21 +489,21 @@
             tts_text: item.text,
           });
         }
-      } else if (mark === 'S') {
-        const keyChunk = (item.contains || []).map((ref) => (byId.get(ref) || {}).text).filter(Boolean).join(' / ');
+      } else {
+        const keyPoint = (item.contains || []).map((ref) => (byId.get(ref) || {}).text).filter(Boolean).join(' / ');
         cards.push({
-          note_type: meta.card,
+          note_type: cardType,
           fields: {
             Audio: audio,
             Text: item.text,
             Meaning: item.meaning || '',
-            KeyChunk: keyChunk,
+            KeyPoint: keyPoint,
             Source: sourceLine(source, item),
           },
           tags,
           tts_text: item.text,
         });
-        pushTts(audioFile(mark, item.text), item.text, meta.card);
+        pushTts(audioFile(mark, item.text), item.text, cardType);
         if (mods.has('produce')) {
           cards.push({
             note_type: 'EN::Listen::Produce',
@@ -428,10 +518,50 @@
           });
         }
       }
-      // T（语段）不出卡：整段不适合塞进一张卡；它作为节点存在，参与理解与连接
+      // 「段」不出卡：整段不适合塞进一张卡；它作为节点存在，参与理解与连接
     }
 
     return { cards, tts };
+  }
+
+  /**
+   * 标准输出：把信封规范成一份**中立的条目清单**（本步骤的正产品）。
+   * 凡是被你标了的东西都会在这里出现（包括 AI 不认识的记号、以及不进图的提醒/疑问），
+   * 后面谁想拿它做什么（出卡片、进模型、列清单）都行。
+   */
+  function toStandardItems(env) {
+    validateMaterial(env);
+    const lang = env.language || 'en';
+    return env.items.map((item) => {
+      const mark = canonMark(item.mark);
+      const role = resolveRole(item, env);
+      const decl = declaredMark(env, item.mark);
+      return {
+        id: item.id,
+        mark,
+        mark_written: MARK_WRITTEN[mark] || mark,
+        mark_means: decl && decl.means ? decl.means : (item.mark_means === undefined ? null : item.mark_means),
+        custom_mark: isCustomMark(item.mark),
+        role,
+        role_known: !!ROLES[role],
+        in_graph: !!(ROLE_NODE_TYPE[role]),
+        node_id: ROLE_NODE_TYPE[role] ? nodeId(lang, mark, item.text, role) : null,
+        text: item.text,
+        margin_note: item.margin_note === undefined ? null : item.margin_note,
+        meaning: item.meaning === undefined ? null : item.meaning,
+        meaning_source: item.meaning_source === undefined ? null : item.meaning_source,
+        ipa: item.ipa === undefined ? null : item.ipa,
+        context: item.context === undefined ? null : item.context,
+        page: Number(item.page),
+        line: Number(item.line) || (item.lines ? Number(item.lines[0]) : null),
+        lines: Array.isArray(item.lines) ? item.lines.slice() : null,
+        contains: Array.isArray(item.contains) ? item.contains.slice() : [],
+        modifiers: Array.from(modifiersOf(item)),
+        scope: item.inferred_from_line === true ? 'from_line' : (item.marked_by === 'dot' ? 'dot' : 'margin'),
+        uncertain: !!item.uncertain,
+        duplicate_of: item.duplicate_of === undefined ? null : item.duplicate_of,
+      };
+    });
   }
 
   function sourceLine(source, item) {
@@ -475,25 +605,19 @@
   }
 
   /**
-   * Anki 卡片模板（正面/背面）：**一次性粘进 Anki 建四个 note type**。
-   * 正面都带 `{{#Audio}}...{{/Audio}}{{^Audio}}...{{/Audio}}` 退化分支：
-   * 音频还没合成时不会出现空白正面（听不到就退到 IPA / 文本提示）。
+   * 卡片模板（**可选的呈现层**，不属于"记号/提取/标准格式"这三步本身）。
+   * 三个 note type；`Audio` 为空时正面退化到 `IPA`／提示文本，不会出现空白正面。
    */
   const ANKI_TEMPLATES = Object.freeze({
-    'EN::Listen::Word': {
-      fields: ['Word', 'Meaning', 'IPA', 'Audio', 'Example', 'Source'],
+    'EN::Listen::Lex': {
+      fields: ['Text', 'Meaning', 'IPA', 'Audio', 'Example', 'Source'],
       front: '{{#Audio}}{{Audio}}{{/Audio}}{{^Audio}}{{IPA}}{{/Audio}}',
-      back: '{{FrontSide}}<hr id=answer><b>{{Word}}</b> {{IPA}}<br>{{Meaning}}<br><i>{{Example}}</i><br><small>{{Source}}</small>',
-    },
-    'EN::Listen::Chunk': {
-      fields: ['Chunk', 'Meaning', 'Audio', 'Example', 'Source'],
-      front: '{{Audio}}',
-      back: '{{FrontSide}}<hr id=answer><b>{{Chunk}}</b><br>{{Meaning}}<br><i>{{Example}}</i><br><small>{{Source}}</small>',
+      back: '{{FrontSide}}<hr id=answer><b>{{Text}}</b> {{IPA}}<br>{{Meaning}}<br><i>{{Example}}</i><br><small>{{Source}}</small>',
     },
     'EN::Listen::Sentence': {
-      fields: ['Audio', 'Text', 'Meaning', 'KeyChunk', 'Source'],
+      fields: ['Audio', 'Text', 'Meaning', 'KeyPoint', 'Source'],
       front: '{{Audio}}',
-      back: '{{FrontSide}}<hr id=answer>{{Text}}<br>{{Meaning}}<br><b>{{KeyChunk}}</b><br><small>{{Source}}</small>',
+      back: '{{FrontSide}}<hr id=answer>{{Text}}<br>{{Meaning}}<br><b>{{KeyPoint}}</b><br><small>{{Source}}</small>',
     },
     'EN::Listen::Produce': {
       fields: ['Prompt', 'Target', 'Audio', 'Source'],
@@ -621,6 +745,7 @@
     const patch = buildGraphPatch(env);
     const carded = toCards(env);
     const runRequest = toRunRequest(env, o);
+    const items = toStandardItems(env);
     const summary = {
       batch_id: env.batch_id,
       items: env.items.length,
@@ -635,22 +760,25 @@
         + `${carded.cards.length} 张卡 · ${runRequest.actions.length} 条动作 · ${validated.warnings.length} 条告警`,
     };
     return {
-      cards: { cards: carded.cards, tts: carded.tts },
+      items,                                  // ★ 标准输出（本步正产品）
+      graph_patch: patch,                     // 进图的节点与边
+      run_request: runRequest,                // 可直接跑的 mindnet.run/1
+      cards: { cards: carded.cards, tts: carded.tts },   // 可选呈现层
       anki_files: toAnkiFiles(carded.cards, o),
       anki_templates: toAnkiTemplates(o),
       tts: carded.tts,
-      run_request: runRequest,
-      graph_patch: patch,
       warnings: validated.warnings,
       summary,
     };
   }
 
   const api = {
-    MATERIAL_PROTOCOL, RUN_PROTOCOL, MARKS, MODIFIERS, LS_DEFAULTS, CARD_FIELDS, ANKI_TEMPLATES,
-    MARK_WRITTEN, MARK_ALIASES, canonMark, writtenMark,
+    MATERIAL_PROTOCOL, RUN_PROTOCOL, MARKS, ROLES, BUILTIN_ROLE, ROLE_NODE_TYPE,
+    MODIFIERS, LS_DEFAULTS, CARD_FIELDS, ANKI_TEMPLATES,
+    MARK_WRITTEN, MARK_ALIASES, canonMark, writtenMark, declaredMark, resolveRole, isCustomMark,
     normalize, slug, hash8, nodeId, topicId,
-    validateMaterial, buildGraphPatch, toCards, toAnkiFiles, toAnkiTemplates, toRunRequest, convert,
+    validateMaterial, buildGraphPatch, toCards, toAnkiFiles, toAnkiTemplates, toRunRequest,
+    toStandardItems, convert,
   };
 
   if (isNode) module.exports = api;

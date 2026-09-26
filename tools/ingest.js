@@ -71,12 +71,15 @@ function main(argv) {
     if (warnings === null) return 1;
 
     if (args.check) {
+      const items = ingest.toStandardItems(env);
       const patch = ingest.buildGraphPatch(env);
-      const carded = ingest.toCards(env);
       const lines = [
-        `✓ 信封合法：${env.batch_id} · ${env.items.length} 条`,
-        `  将产出：${patch.nodes.length} 节点 / ${patch.edges.length} 边 / ${carded.cards.length} 张卡 / ${carded.tts.length} 条待合成音频`,
+        `✓ 清单合法：${env.batch_id} · ${env.items.length} 条`,
+        `  进图：${patch.nodes.length} 节点 / ${patch.edges.length} 边`,
       ];
+      const roles = {};
+      for (const it of items) roles[it.role] = (roles[it.role] || 0) + 1;
+      lines.push(`  角色：${Object.entries(roles).map(([r, n]) => `${r}×${n}`).join(' · ')}`);
       if (patch.skipped.length) {
         lines.push(`  不进图：${patch.skipped.map((s) => `${s.item}（${s.reason}）`).join('；')}`);
       }
@@ -120,10 +123,13 @@ function main(argv) {
       return 0;
     }
 
-    write(path.join(outDir, 'cards.json'), `${JSON.stringify(result.cards, null, 2)}\n`);
+    // ① 标准输出（本步骤的正产品）：中立的条目清单
+    write(path.join(outDir, 'items.json'), `${JSON.stringify(result.items, null, 2)}\n`);
+    // ② 进模型：节点与边 + 可直接跑的请求
     write(path.join(outDir, 'graph_patch.json'), `${JSON.stringify(result.graph_patch, null, 2)}\n`);
     write(path.join(outDir, 'run_request.json'), `${JSON.stringify(result.run_request, null, 2)}\n`);
-    // tts.tsv：文件名与卡片 Audio 字段里的 [sound:...] 一一对应，合成后直接丢进 collection.media
+    // ③ 可选的呈现层（不属于本步骤，想要卡片就拿走）
+    write(path.join(outDir, 'cards.json'), `${JSON.stringify(result.cards, null, 2)}\n`);
     write(path.join(outDir, 'tts.tsv'), `${result.tts.map((t) => `${t.file}\t${t.text}\t${t.note_type}`).join('\n')}${result.tts.length ? '\n' : ''}`);
     write(path.join(outDir, 'tts.txt'), `${result.tts.map((t) => t.text).join('\n')}${result.tts.length ? '\n' : ''}`);
     write(path.join(outDir, 'anki', 'templates.md'), result.anki_templates);
@@ -133,23 +139,23 @@ function main(argv) {
     const summaryLines = [
       result.summary.text,
       '',
-      '产出：',
-      '  cards.json        卡片（canonical）',
-      `  anki/*.tsv        ${Object.keys(result.anki_files).length} 个文件（每 note type 一个，Anki 导入用）`,
-      '  anki/templates.md 四个 note type 的字段与正/背面模板（照抄进 Anki）',
-      `  tts.tsv           ${result.tts.length} 条待合成音频（文件名 → 文本），与卡片 Audio 字段一一对应`,
-      '  tts.txt           同一批文本（纯文本，每行一条）',
+      '产出（前三样是这一步的东西）：',
+      '  items.json        标准输出：规范后的条目清单（记号/角色/出处/含义，含不进图的提醒与疑问）',
+      '  graph_patch.json  进模型的节点与边',
       '  run_request.json  mindnet.run/1（用 tools/io_check.js 校验后可交给 io_run.js）',
-      '  graph_patch.json  节点与边（人工核对用）',
+      '',
+      '  —— 以下是可选的呈现层，不属于本步骤 ——',
+      '  cards.json        卡片（canonical）',
+      `  anki/*.tsv        ${Object.keys(result.anki_files).length} 个文件（给 Anki 用）`,
+      `  tts.tsv           ${result.tts.length} 条待合成音频（文件名 → 文本）`,
+      '  anki/templates.md 卡片模板',
       '',
       result.warnings.length ? '告警：' : '告警：无',
       ...result.warnings.map((w) => `  ⚠ [${w.kind}] ${w.item}：${w.message}`),
       '',
       '下一步：',
-      '  1) 用任意 TTS 按 tts.tsv 合成音频（文件名保持不变），导入 Anki 前放进 collection.media',
-      '  2) 按 anki/templates.md 建四个 note type，再导入 anki/*.tsv',
-      `  3) node tools/io_check.js --request ${path.join(outDir, 'run_request.json')} --graph <你的图>`,
-      `  4) node tools/io_run.js --request ${path.join(outDir, 'run_request.json')} --graph <你的图> --print digest`,
+      `  node tools/io_check.js --request ${path.join(outDir, 'run_request.json')} --graph <你的图>`,
+      `  node tools/io_run.js --request ${path.join(outDir, 'run_request.json')} --graph <你的图> --print digest`,
     ];
     write(path.join(outDir, 'summary.txt'), `${summaryLines.join('\n')}\n`);
     process.stdout.write(`${summaryLines.join('\n')}\n`);
