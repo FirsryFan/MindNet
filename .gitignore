@@ -5,10 +5,14 @@ node_modules/
 .tmp/
 .tmp_verify/
 .probe/
+.tmp_out/
+tmp_*/
 
 # 输出产物
 state.json
 *.log
+data/            # I/O 存档（runs.jsonl）与真实材料，不进仓库
+out/             # ingest 的产出（卡片/Anki/TTS/请求）
 
 # 系统杂项
 .DS_Store
