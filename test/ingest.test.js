@@ -46,7 +46,7 @@ test('材料 · 校验：缺 margin_note / context / contains 悬空 / mark 非�
   const cases = [
     [{ items: [{ id: 'a', mark: 'W', text: 'x', margin_note: 'x', page: 1, line: 1 }] }, /context/],
     [{ items: [{ id: 'a', mark: 'W', text: 'x', context: 'y', page: 1, line: 1 }] }, /margin_note/],
-    [{ items: [{ id: 'a', mark: 'X', text: 'x', page: 1, line: 1 }] }, /mark 必须是/],
+    [{ items: [{ id: 'a', mark: 'X', text: 'x', page: 1, line: 1 }] }, /记号认不出来/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', contains: ['nope'], page: 1, line: 1 }] }, /contains 指向不存在/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', page: 1 }] }, /缺少 line 或 lines/],
     [{ items: [{ id: 'a', mark: 'S', text: 'x', page: 1, line: 1 }, { id: 'a', mark: 'S', text: 'y', page: 1, line: 2 }] }, /id .* 与前面的重复/],
@@ -69,6 +69,57 @@ test('材料 · 校验：不确定/冲突/重复文本产生告警但不拒绝�
   const kinds = warnings.map((w) => w.kind).sort();
   assert.deepEqual(kinds, ['conflict', 'duplicate-text', 'uncertain']);
   assert.match(warnings.find((w) => w.kind === 'uncertain').message, /第 3 行页边/);
+});
+
+test('材料 · 记号写法：写「词/搭/句/段/问」和写 W/C/S/T/N 等价（节点 id 完全相同）', () => {
+  assert.equal(ingest.canonMark('词'), 'W');
+  assert.equal(ingest.canonMark('搭'), 'C');
+  assert.equal(ingest.canonMark('句'), 'S');
+  assert.equal(ingest.canonMark('段'), 'T');
+  assert.equal(ingest.canonMark('问'), 'N');
+  assert.equal(ingest.canonMark('会'), 'OK');
+  assert.equal(ingest.canonMark('1'), 'W');
+  assert.equal(ingest.canonMark('搭 '), 'C');
+  assert.equal(ingest.canonMark('W'), 'W');
+  assert.equal(ingest.canonMark('n'), 'N');
+  assert.equal(ingest.canonMark('看不懂的记号'), '看不懂的记号', '认不出来就原样返回，交给校验报错');
+  assert.equal(ingest.writtenMark('W'), '词');
+  // 幂等的前提：两种写法落到同一个节点 id
+  assert.equal(ingest.nodeId('en', '词', 'Resilient'), ingest.nodeId('en', 'W', 'Resilient'));
+  assert.equal(ingest.nodeId('en', '句', 'It  took a while.'), ingest.nodeId('en', 'S', 'It took a while.'));
+  // 中文记号也能端到端跑
+  const env = tiny({
+    items: [{ id: 'i1', mark: '词', text: 'resilient', context: 'She was resilient.', margin_note: 'resilient', page: 1, line: 3 }],
+  });
+  const cards = ingest.toCards(env).cards;
+  assert.equal(cards[0].note_type, 'EN::Listen::Word');
+  assert.ok(cards[0].tags.indexOf('写::词') >= 0, '卡片上要留下"你写的是哪个记号"');
+  assert.equal(ingest.buildGraphPatch(env).nodes[0].id, 'en::w::resilient');
+});
+
+test('材料 · 两条省事通道：一行只有一处可以不抄 / 用点子标词 —— 都必须显式说明，否则仍拒绝', () => {
+  // ① 一行只有一处要记 ⇒ 可以不抄，但要标 inferred_from_line
+  const fromLine = tiny({
+    items: [{ id: 'i1', mark: '词', text: 'resilient', context: 'She was resilient.', page: 1, line: 3, inferred_from_line: true }],
+  });
+  const w1 = ingest.validateMaterial(fromLine).warnings;
+  assert.equal(w1.some((w) => w.kind === 'inferred-scope'), true);
+  assert.equal(ingest.toCards(fromLine).cards[0].tags.indexOf('scope_from_line') >= 0, true);
+
+  // ② 词下点了个点 ⇒ 可以不抄，但要标 marked_by: 'dot'
+  const byDot = tiny({
+    items: [{ id: 'i1', mark: '词', text: 'resilient', context: 'She was resilient.', page: 1, line: 3, marked_by: 'dot', dot_position: '第 4 个词下方' }],
+  });
+  const w2 = ingest.validateMaterial(byDot).warnings;
+  assert.equal(w2.some((w) => w.kind === 'dot-mark'), true);
+  assert.match(w2.find((w) => w.kind === 'dot-mark').message, /第 4 个词下方/);
+  assert.equal(ingest.toCards(byDot).cards[0].tags.indexOf('scope_dot') >= 0, true);
+
+  // ③ 什么都不说 ⇒ 仍然拒绝（不许 AI 偷偷猜）
+  const silent = tiny({
+    items: [{ id: 'i1', mark: '词', text: 'resilient', context: 'She was resilient.', page: 1, line: 3 }],
+  });
+  assert.throws(() => ingest.validateMaterial(silent), /margin_note/);
 });
 
 // ------------------------------------------------------------------ 幂等

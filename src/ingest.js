@@ -29,6 +29,41 @@
     OK: { name: 'known', node_type: null, card: null, copy_to_margin: false },
   });
 
+  /**
+   * 你手上写的记号 → 内部代号。
+   * 中文单字是**默认写法**（不用在脑子里翻译，笔顺也少）；字母是等价的别名，
+   * 所以你写「词」还是 `W` 都一样，出来的节点 id 也完全相同（不会重复建）。
+   */
+  const MARK_WRITTEN = Object.freeze({
+    W: '词', C: '搭', S: '句', T: '段', N: '问', OK: '会',
+  });
+
+  const MARK_ALIASES = Object.freeze({
+    词: 'W', 单词: 'W', w: 'W', W: 'W',
+    搭: 'C', 搭配: 'C', 短语: 'C', c: 'C', C: 'C',
+    句: 'S', 句子: 'S', 句型: 'S', s: 'S', S: 'S',
+    段: 'T', 段落: 'T', 语段: 'T', t: 'T', T: 'T',
+    问: 'N', 疑问: 'N', n: 'N', N: 'N',
+    会: 'OK', 懂: 'OK', 已知: 'OK', ok: 'OK', OK: 'OK',
+    1: 'W', 2: 'C', 3: 'S', 4: 'T', 5: 'N',
+  });
+
+  /** 把写出来的记号规范成内部代号；认不出来就原样返回（交给校验去报错） */
+  function canonMark(mark) {
+    if (mark === undefined || mark === null) return mark;
+    const key = String(mark).trim();
+    if (MARKS[key]) return key;
+    if (MARK_ALIASES[key]) return MARK_ALIASES[key];
+    if (MARK_ALIASES[key.toUpperCase()]) return MARK_ALIASES[key.toUpperCase()];
+    return key;
+  }
+
+  /** 反过来：内部代号 → 你写的那一个字（给文档/提示词/报错信息用） */
+  function writtenMark(mark) {
+    const canon = canonMark(mark);
+    return MARK_WRITTEN[canon] || String(mark);
+  }
+
   const MODIFIERS = ['star', 'produce', 'needs_review', 'exception'];
 
   /**
@@ -88,11 +123,15 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  /** 节点 id：内容确定 ⇒ 同一页拍两次不会重复建节点 */
+  /**
+   * 节点 id：内容确定 ⇒ 同一页拍两次不会重复建节点。
+   * 记号先规范成内部代号，所以写「词」还是 `W` 得到的是**同一个 id**（幂等的前提）。
+   */
   function nodeId(language, mark, text) {
     const lang = (language || 'en').toLowerCase();
-    const kind = (mark || 'x').toLowerCase();
-    const key = mark === 'S' || mark === 'T' ? hash8(text) : slug(text);
+    const canon = canonMark(mark) || 'x';
+    const kind = String(canon).toLowerCase();
+    const key = canon === 'S' || canon === 'T' ? hash8(text) : slug(text);
     return `${lang}::${kind}::${key || hash8(text)}`;
   }
 
@@ -122,8 +161,10 @@
       if (!raw || typeof raw !== 'object') fail(`${at} 不是对象`);
       if (typeof raw.id !== 'string' || !raw.id) fail(`${at} 缺少 id`);
       if (seen.has(raw.id)) fail(`${at} 的 id "${raw.id}" 与前面的重复`);
-      if (!MARKS[raw.mark]) {
-        fail(`${at} 的 mark 必须是 ${Object.keys(MARKS).join(' / ')}，实际 ${JSON.stringify(raw.mark)}`);
+      const mark = canonMark(raw.mark);
+      if (!MARKS[mark]) {
+        fail(`${at} 的记号认不出来：${JSON.stringify(raw.mark)}。`
+          + `能认的是 ${Object.keys(MARK_WRITTEN).map((k) => `${MARK_WRITTEN[k]}（${k}）`).join(' / ')}`);
       }
       if (typeof raw.text !== 'string' || !raw.text.trim()) fail(`${at} 缺少 text`);
       if (!Number.isFinite(Number(raw.page))) fail(`${at} 缺少 page`);
@@ -132,12 +173,17 @@
           && raw.lines.every((x) => Number.isFinite(Number(x))));
       if (!hasLine) fail(`${at} 缺少 line 或 lines`);
 
-      const mark = MARKS[raw.mark];
-      if (mark.copy_to_margin && raw.mark !== 'OK' && !hasText(raw.margin_note)) {
-        fail(`${at}（${raw.mark}）缺少 margin_note：页边照抄的那一份必须给出来（docs/MARKS.md §3.1）`);
+      const meta = MARKS[mark];
+      // 两条"省事通道"：页边没抄也能收，但必须**显式说明为什么**（不许 AI 偷偷猜）
+      const fromLine = raw.inferred_from_line === true;      // 这一行只有这一处要记
+      const byDot = raw.marked_by === 'dot';                 // 你在那个词下面点了个点
+      if (meta.copy_to_margin && mark !== 'OK' && !hasText(raw.margin_note) && !fromLine && !byDot) {
+        fail(`${at}（${writtenMark(mark)}）缺少 margin_note：`
+          + '页边照抄的那一份必须给出来；或者显式说明这行只有一处要记（inferred_from_line）'
+          + '／你是用点子标的（marked_by: "dot"）—— 见 docs/MARKS.md §3.2');
       }
-      if ((raw.mark === 'W' || raw.mark === 'C') && !hasText(raw.context)) {
-        fail(`${at}（${raw.mark}）缺少 context：正文里的那一句是例句来源`);
+      if ((mark === 'W' || mark === 'C') && !hasText(raw.context)) {
+        fail(`${at}（${writtenMark(mark)}）缺少 context：正文里的那一句是例句来源`);
       }
       if (raw.modified !== undefined) {
         if (!Array.isArray(raw.modified)) fail(`${at} 的 modified 必须是数组`);
@@ -153,6 +199,9 @@
       }
       if (raw.uncertain) warnings.push({ item: raw.id, kind: 'uncertain', message: `上游标了不确定：${raw.region || '（未给位置）'}` });
       if (raw.conflict) warnings.push({ item: raw.id, kind: 'conflict', message: `页边与正文冲突：${raw.conflict_detail || '（未给细节）'}` });
+      // 省事通道要被记录，便于事后核对"AI 有没有取错词"
+      if (fromLine) warnings.push({ item: raw.id, kind: 'inferred-scope', message: '页边没抄，按"这一行只有一处要记"取的正文内容' });
+      if (byDot) warnings.push({ item: raw.id, kind: 'dot-mark', message: `按你标的点子取的正文内容：${raw.dot_position || '（未给位置描述）'}` });
       seen.set(raw.id, raw);
     });
 
@@ -194,17 +243,18 @@
     const idOf = new Map();     // 信封 id → 节点 id
 
     for (const item of env.items) {
-      const meta = MARKS[item.mark];
+      const mark = canonMark(item.mark);
+      const meta = MARKS[mark];
       if (!meta.node_type) {
-        skipped.push({ item: item.id, mark: item.mark, reason: item.mark === 'N' ? '疑问不进图（先答复，再决定是否建节点）' : '标记为已知' });
+        skipped.push({ item: item.id, mark, reason: mark === 'N' ? '疑问不进图（先答复，再决定是否建节点）' : '标记为已知' });
         continue;
       }
       if (item.duplicate_of) {
         idOf.set(item.id, idOf.get(item.duplicate_of) || null);
-        skipped.push({ item: item.id, mark: item.mark, reason: `与 ${item.duplicate_of} 重复` });
+        skipped.push({ item: item.id, mark, reason: `与 ${item.duplicate_of} 重复` });
         continue;
       }
-      const id = nodeId(lang, item.mark, item.text);
+      const id = nodeId(lang, mark, item.text);
       idOf.set(item.id, id);
       nodes.push({
         id,
@@ -212,7 +262,8 @@
         type: meta.node_type,
         // 这些不是模型状态，只是"材料元数据"，随节点名/权重一起带过去
         meta: {
-          mark: item.mark,
+          mark,
+          mark_written: MARK_WRITTEN[mark] || null,
           meaning: item.meaning === undefined ? null : item.meaning,
           meaning_source: item.meaning_source === undefined ? null : item.meaning_source,
           ipa: item.ipa === undefined ? null : item.ipa,
@@ -241,8 +292,9 @@
 
     // produce：想到它要能说出整句（反向边）
     for (const item of env.items) {
+      const mark = canonMark(item.mark);
       const mods = modifiersOf(item);
-      if (!mods.has('produce') || item.mark === 'S' || item.mark === 'T') continue;
+      if (!mods.has('produce') || mark === 'S' || mark === 'T') continue;
       const from = idOf.get(item.id);
       if (!from) continue;
       // 找到包含它的句子/语段
@@ -301,7 +353,8 @@
     };
 
     for (const item of env.items) {
-      const meta = MARKS[item.mark];
+      const mark = canonMark(item.mark);
+      const meta = MARKS[mark];
       if (!meta.card) continue;
       const mods = modifiersOf(item);
       const flags = [];
@@ -310,11 +363,15 @@
       if (mods.has('needs_review')) flags.push('needs_review');
       if (item.uncertain) flags.push('uncertain');
       if (item.meaning_source === 'ai') flags.push('meaning_check');
-      const tags = [`mark::${item.mark}`, ...flags, ...(env.topic ? [`topic::${slug(env.topic)}`] : [])];
-      const audio = audioRef(item.mark, item.text);
+      // 省事通道产生的条目也打标，方便你在 Anki 里筛出来核对
+      if (item.inferred_from_line === true) flags.push('scope_from_line');
+      if (item.marked_by === 'dot') flags.push('scope_dot');
+      const tags = [`mark::${mark}`, `写::${MARK_WRITTEN[mark] || mark}`, ...flags,
+        ...(env.topic ? [`topic::${slug(env.topic)}`] : [])];
+      const audio = audioRef(mark, item.text);
 
-      if (item.mark === 'W' || item.mark === 'C') {
-        const field = item.mark === 'W' ? 'Word' : 'Chunk';
+      if (mark === 'W' || mark === 'C') {
+        const field = mark === 'W' ? 'Word' : 'Chunk';
         cards.push({
           note_type: meta.card,
           fields: {
@@ -328,7 +385,7 @@
           tags,
           tts_text: item.text,
         });
-        pushTts(audioFile(item.mark, item.text), item.text, meta.card);
+        pushTts(audioFile(mark, item.text), item.text, meta.card);
         if (mods.has('produce')) {
           cards.push({
             note_type: 'EN::Listen::Produce',
@@ -342,7 +399,7 @@
             tts_text: item.text,
           });
         }
-      } else if (item.mark === 'S') {
+      } else if (mark === 'S') {
         const keyChunk = (item.contains || []).map((ref) => (byId.get(ref) || {}).text).filter(Boolean).join(' / ');
         cards.push({
           note_type: meta.card,
@@ -356,7 +413,7 @@
           tags,
           tts_text: item.text,
         });
-        pushTts(audioFile(item.mark, item.text), item.text, meta.card);
+        pushTts(audioFile(mark, item.text), item.text, meta.card);
         if (mods.has('produce')) {
           cards.push({
             note_type: 'EN::Listen::Produce',
@@ -591,6 +648,7 @@
 
   const api = {
     MATERIAL_PROTOCOL, RUN_PROTOCOL, MARKS, MODIFIERS, LS_DEFAULTS, CARD_FIELDS, ANKI_TEMPLATES,
+    MARK_WRITTEN, MARK_ALIASES, canonMark, writtenMark,
     normalize, slug, hash8, nodeId, topicId,
     validateMaterial, buildGraphPatch, toCards, toAnkiFiles, toAnkiTemplates, toRunRequest, convert,
   };
